@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../screens/mood_selector_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../screens/chat_tab.dart';
 import '../screens/journal_screen.dart';
 import '../screens/support_screen.dart';
 import '../screens/settings_screen.dart';
@@ -20,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = [
     const DashboardTab(),
-    const MoodSelectorScreen(),
+    const ChatTab(),
     const JournalScreen(),
     const SupportScreen(),
   ];
@@ -117,11 +121,28 @@ class DashboardTab extends StatefulWidget {
 
 class _DashboardTabState extends State<DashboardTab> {
   UserModel? _currentUser;
+  late String _selectedGreetingLine;
+  String _dailyTip = '...';
+
+  final List<String> _greetingLines = [
+    'كيف تشعر اليوم؟ أنا هنا للاستماع إليك.',
+    'مرحبًا، هل ترغب في التحدث؟',
+    'أنا هنا دائمًا إن احتجت لفضفضة.',
+    'لا تحمل كل شيء وحدك… دعني أستمع.',
+    'أخبرني بما في داخلك، أنا حاضر.',
+    'كل شيء يبدأ بكلمة… لنتحدث.',
+    'دعني أرافقك في هذه اللحظة.',
+    'اكتب لي، حتى لو لم تكن متأكدًا ممّا تشعر.',
+    'لنبدأ بنقطة صغيرة… أنا معك.',
+    'لا بأس إن لم تكن بخير… دعنا نبدأ.'
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _selectedGreetingLine = (_greetingLines.toList()..shuffle()).first;
+    _loadDailyTip();
   }
 
   Future<void> _loadUserData() async {
@@ -134,6 +155,94 @@ class _DashboardTabState extends State<DashboardTab> {
         });
       }
     }
+  }
+
+  Future<void> _loadDailyTip() async {
+    final uid = AuthService.currentUid;
+    if (uid == null) return;
+
+    try {
+      final journalSnapshot = await FirebaseFirestore.instance
+          .collection('journal_entries')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      final sessionSnapshot = await FirebaseFirestore.instance
+          .collection('chat_sessions')
+          .where('userId', isEqualTo: uid)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      final latestJournal = journalSnapshot.docs.isNotEmpty
+          ? journalSnapshot.docs.first.data()['content'] ?? ''
+          : '';
+
+      final latestSummary = sessionSnapshot.docs.isNotEmpty
+          ? sessionSnapshot.docs.first.data()['summary'] ?? ''
+          : '';
+
+      final combinedText = '$latestJournal\n$latestSummary'.trim();
+
+      if (combinedText.isEmpty) {
+        _dailyTip = _fallbackTip();
+      } else {
+        print('📢 النص الموحد المرسل إلى GPT:\n$combinedText');
+        final apiKey = dotenv.env['OPENAI_API_KEY'];
+        final uri = Uri.parse('https://api.openai.com/v1/chat/completions');
+        final response = await http.post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $apiKey',
+          },
+          body: jsonEncode({
+            'model': 'gpt-3.5-turbo',
+            'messages': [
+              {
+                'role': 'system',
+                'content': 'أنت مساعد نفسي محترف. استخرج نصيحة نفسية قصيرة ومفيدة من هذا النص، باللغة العربية، بطريقة ودية وداعمة.'
+              },
+              {
+                'role': 'user',
+                'content': combinedText,
+              }
+            ],
+            'temperature': 0.7,
+          }),
+        );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          print('🔥 رد GPT الكامل:');
+          print(response.body);
+          print('✅ النصيحة المولدة من GPT: ${data['choices'][0]['message']['content']}');
+
+          _dailyTip = data['choices'][0]['message']['content'].toString().trim();
+        } else {
+          _dailyTip = _fallbackTip();
+        }
+      }
+    } catch (e) {
+      print('❌ حدث خطأ أثناء الاتصال بـ GPT: $e');
+      _dailyTip = _fallbackTip();
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String _fallbackTip() {
+    final fallbackTips = [
+      'خذ نفساً عميقاً... أنت أقوى مما تعتقد',
+      'كل يوم هو فرصة جديدة للبداية',
+      'تذكر: من الطبيعي أن تشعر بمشاعر مختلفة',
+      'الاهتمام بنفسك ليس أنانية، بل ضرورة',
+    ];
+    final day = DateTime.now().day;
+    return fallbackTips[day % fallbackTips.length];
   }
 
   @override
@@ -159,22 +268,12 @@ class _DashboardTabState extends State<DashboardTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ترحيب المستخدم
             _buildWelcomeCard(),
-            
             const SizedBox(height: 24),
-            
-            // الخيارات الرئيسية
             _buildQuickActions(),
-            
             const SizedBox(height: 24),
-            
-            // النصائح اليومية
             _buildDailyTips(),
-            
             const SizedBox(height: 24),
-            
-            // الإحصائيات
             _buildStatistics(),
           ],
         ),
@@ -216,8 +315,8 @@ class _DashboardTabState extends State<DashboardTab> {
               ),
             ),
             const SizedBox(height: 12),
-              Text(
-              'كيف تشعر اليوم؟ أنا هنا للاستماع إليك',
+            Text(
+              _selectedGreetingLine,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.9),
                 fontSize: 16,
@@ -248,7 +347,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 color: Colors.blue,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const MoodSelectorScreen(),
+                    builder: (context) => const ChatTab(),
                   ),
                 ),
               ),
@@ -327,15 +426,6 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 
   Widget _buildDailyTips() {
-    final tips = [
-      'خذ نفساً عميقاً... أنت أقوى مما تعتقد',
-      'كل يوم هو فرصة جديدة للبداية',
-      'تذكر: من الطبيعي أن تشعر بمشاعر مختلفة',
-      'الاهتمام بنفسك ليس أنانية، بل ضرورة',
-    ];
-
-    final randomTip = tips[DateTime.now().day % tips.length];
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -357,7 +447,7 @@ class _DashboardTabState extends State<DashboardTab> {
             ),
             const SizedBox(height: 12),
             Text(
-              randomTip,
+              _dailyTip,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 height: 1.5,
               ),

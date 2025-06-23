@@ -29,7 +29,7 @@ class FirestoreService {
 
       return docRef.id;
     } catch (e) {
-      print('Error creating chat session: $e');
+      print('Error creating chat session: \$e');
       rethrow;
     }
   }
@@ -41,7 +41,6 @@ class FirestoreService {
           .collection('chat_messages')
           .add(message.toJson());
 
-      // تحديث آخر رسالة في الجلسة
       if (message.sessionId != null) {
         await _firestore
             .collection('chat_sessions')
@@ -51,7 +50,7 @@ class FirestoreService {
         });
       }
     } catch (e) {
-      print('Error adding chat message: $e');
+      print('Error adding chat message: \$e');
       rethrow;
     }
   }
@@ -68,7 +67,7 @@ class FirestoreService {
             .toList());
   }
 
-  // الحصول على جلسات المحادثة للمستخدم
+  // الحصول على جلسات المحادثة كـ Stream
   static Stream<List<ChatSession>> getUserChatSessions() {
     final userId = AuthService.currentUid;
     if (userId == null) return Stream.value([]);
@@ -83,10 +82,31 @@ class FirestoreService {
             .toList());
   }
 
+  // الحصول على جلسات المحادثة كـ Future
+  static Future<List<Map<String, dynamic>>> getUserChatSessionsOnce() async {
+  final userId = AuthService.currentUid;
+  print('📛 getUserChatSessionsOnce: userId = $userId');
+
+  if (userId == null) return [];
+
+  final querySnapshot = await _firestore
+      .collection('chat_sessions')
+      .where('userId', isEqualTo: userId)
+      .orderBy('lastMessageAt', descending: true)
+      .get();
+
+  print('📛 getUserChatSessionsOnce: loaded ${querySnapshot.docs.length} docs');
+
+  return querySnapshot.docs.map((doc) {
+    final data = doc.data();
+    data['id'] = doc.id;
+    return data;
+  }).toList();
+}
+
   // حذف جلسة محادثة
   static Future<void> deleteChatSession(String sessionId) async {
     try {
-      // حذف جميع رسائل الجلسة
       final messages = await _firestore
           .collection('chat_messages')
           .where('sessionId', isEqualTo: sessionId)
@@ -96,16 +116,20 @@ class FirestoreService {
         await doc.reference.delete();
       }
 
-      // حذف الجلسة
       await _firestore
           .collection('chat_sessions')
           .doc(sessionId)
           .delete();
     } catch (e) {
-      print('Error deleting chat session: $e');
+      print('Error deleting chat session: \$e');
       rethrow;
     }
   }
+
+
+
+
+
 
   // === خدمات اليوميات ===
 

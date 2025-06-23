@@ -15,17 +15,18 @@ import 'services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // تهيئة Firebase (في بيئة الإنتاج، يتطلب ملفات التكوين)
+
+await dotenv.load(fileName: "assets/.env");
+
   try {
     await Firebase.initializeApp();
   } catch (e) {
     print('خطأ في تهيئة Firebase: $e');
-    // المتابعة بدون Firebase للاختبار المحلي
   }
-  
+
   runApp(const FadfadaApp());
 }
+
 
 class FadfadaApp extends StatelessWidget {
   const FadfadaApp({super.key});

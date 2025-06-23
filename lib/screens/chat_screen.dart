@@ -27,37 +27,54 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
-  
+
   bool _isTyping = false;
   bool _isLoading = true;
   String? _currentSessionId;
+
+  List<Map<String, dynamic>> _previousSessions = [];
 
   @override
   void initState() {
     super.initState();
     _initializeChat();
+    _fetchPreviousSessions();
   }
 
   Future<void> _initializeChat() async {
     try {
       if (widget.sessionId != null) {
-        // تحميل محادثة موجودة
         _currentSessionId = widget.sessionId;
         _loadExistingChat();
       } else {
-        // إنشاء محادثة جديدة
         _currentSessionId = await FirestoreService.createChatSession(widget.selectedMood.id);
         _addWelcomeMessage();
       }
     } catch (e) {
-      print('Error initializing chat: $e');
-      _addWelcomeMessage(); // إضافة رسالة ترحيب محلية في حالة الخطأ
+      print('Error initializing chat: \$e');
+      _addWelcomeMessage();
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
   }
+
+  Future<void> _fetchPreviousSessions() async {
+  print('⚠️ تم استدعاء _fetchPreviousSessions');
+  final sessions = await FirestoreService.getUserChatSessionsOnce();
+
+
+  print('🔥 عدد الجلسات المحمّلة: ${sessions.length}');
+  for (var session in sessions) {
+    print('🟢 جلسة: ${session['id']} - ${session['timestamp']}');
+  }
+
+  setState(() {
+    _previousSessions = sessions;
+  });
+}
+
 
   void _loadExistingChat() {
     if (_currentSessionId != null) {
@@ -84,7 +101,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(welcomeMessage);
     });
 
-    // حفظ الرسالة في Firestore
     if (_currentSessionId != null) {
       FirestoreService.addChatMessage(welcomeMessage);
     }
@@ -117,7 +133,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty) return;
 
-    // إضافة رسالة المستخدم
     final userMessage = ChatMessage(
       id: const Uuid().v4(),
       content: messageText,
@@ -134,20 +149,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
     _scrollToBottom();
 
-    // حفظ رسالة المستخدم
     if (_currentSessionId != null) {
       FirestoreService.addChatMessage(userMessage);
     }
 
     try {
-      // الحصول على رد الذكاء الصناعي
       final aiResponse = await AIService.sendMessage(
         messageText,
         widget.selectedMood,
         previousMessages: _messages.where((m) => !m.isFromUser).take(5).toList(),
       );
 
-      // إضافة رد الذكاء الصناعي
       final aiMessage = ChatMessage(
         id: const Uuid().v4(),
         content: aiResponse,
@@ -161,7 +173,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _isTyping = false;
       });
 
-      // حفظ رد الذكاء الصناعي
       if (_currentSessionId != null) {
         FirestoreService.addChatMessage(aiMessage);
       }
@@ -171,7 +182,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _isTyping = false;
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('حدث خطأ في إرسال الرسالة. يرجى المحاولة مرة أخرى.'),
@@ -193,84 +204,119 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _startNewChat() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(selectedMood: widget.selectedMood),
+      ),
+    );
+  }
+
+  void _showSuggestions() {
+    final suggestions = AIService.getConversationStarters(widget.selectedMood);
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'اقتراحات للحديث',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            ...suggestions.map((suggestion) => ListTile(
+                  leading: Icon(
+                    Icons.chat_bubble_outline,
+                    color: widget.selectedMood.color,
+                  ),
+                  title: Text(suggestion),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _messageController.text = suggestion;
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _clearChat() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('مسح المحادثة'),
+        content: const Text('هل أنت متأكد من أنك تريد مسح هذه المحادثة؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _messages.clear();
+              });
+              if (_currentSessionId != null) {
+                FirestoreService.deleteChatSession(_currentSessionId!);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('مسح'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: widget.selectedMood.color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                widget.selectedMood.icon,
-                color: widget.selectedMood.color,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'صديقك الافتراضي',
-                  style: TextStyle(fontSize: 16),
-                ),
-                Text(
-                  'الحالة: ${widget.selectedMood.arabicName}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'suggestions':
-                  _showSuggestions();
-                  break;
-                case 'clear':
-                  _clearChat();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'suggestions',
-                child: Row(
-                  children: [
-                    Icon(Icons.lightbulb_outline),
-                    SizedBox(width: 8),
-                    Text('اقتراحات للحديث'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'clear',
-                child: Row(
-                  children: [
-                    Icon(Icons.clear_all),
-                    SizedBox(width: 8),
-                    Text('مسح المحادثة'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+        title: const Text('الدردشة'),
       ),
       body: Column(
         children: [
-          // قائمة الرسائل
+          if (_previousSessions.isNotEmpty)
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.35,
+              child: ListView.builder(
+                itemCount: _previousSessions.length,
+                itemBuilder: (context, index) {
+                  final session = _previousSessions[index];
+                  final timestamp = session['timestamp']?.toDate();
+                  return ListTile(
+                    leading: const Icon(Icons.chat_bubble_outline),
+                    title: Text('دردشة ${index + 1}'),
+                    subtitle: timestamp != null ? Text('${timestamp.toLocal()}') : null,
+                    onTap: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatScreen(
+                            selectedMood: widget.selectedMood,
+                            sessionId: session['id'],
+                          ),
+                        ),
+                      );
+                    },
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () async {
+                        await FirestoreService.deleteChatSession(session['id']);
+                        _fetchPreviousSessions();
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -284,7 +330,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             .animate()
                             .fadeIn(duration: const Duration(milliseconds: 300));
                       }
-                      
+
                       final message = _messages[index];
                       return ChatBubble(message: message)
                           .animate(delay: Duration(milliseconds: 100 * index))
@@ -296,8 +342,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-
-          // حقل إدخال الرسالة
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 42),
+              onPressed: _startNewChat,
+            ),
+          ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -349,68 +400,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSuggestions() {
-    final suggestions = AIService.getConversationStarters(widget.selectedMood);
-    
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'اقتراحات للحديث',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            ...suggestions.map((suggestion) => ListTile(
-              leading: Icon(
-                Icons.chat_bubble_outline,
-                color: widget.selectedMood.color,
-              ),
-              title: Text(suggestion),
-              onTap: () {
-                Navigator.pop(context);
-                _messageController.text = suggestion;
-              },
-            )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _clearChat() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('مسح المحادثة'),
-        content: const Text('هل أنت متأكد من أنك تريد مسح هذه المحادثة؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _messages.clear();
-              });
-              if (_currentSessionId != null) {
-                FirestoreService.deleteChatSession(_currentSessionId!);
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('مسح'),
           ),
         ],
       ),

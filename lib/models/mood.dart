@@ -95,6 +95,14 @@ class Mood {
     }
   }
 
+  static Mood defaultMood() {
+    return getAllMoods().first;
+  }
+
+  static Mood getById(String id) {
+    return getAllMoods().firstWhere((mood) => mood.id == id, orElse: () => defaultMood());
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -109,7 +117,7 @@ class Mood {
     if (mood != null) {
       return mood;
     }
-    
+
     // إذا لم نجد الحالة، نعيد حالة افتراضية
     return getAllMoods().first;
   }
