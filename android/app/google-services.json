@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "16587850912",
+    "project_id": "fadfada-e9a03",
+    "storage_bucket": "fadfada-e9a03.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:16587850912:android:05d1b32b37c94af167b5c5",
+        "android_client_info": {
+          "package_name": "com.fadfada.fadfada_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "16587850912-5hsj95jctaf4kvarodmagji96mjj1d1s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fadfada.fadfada_app",
+            "certificate_hash": "75c61299594fa69e3876f0ee736f0f09bdec65f5"
+          }
+        },
+        {
+          "client_id": "16587850912-h7g3b32g4mp4umn73jdrq205j4egjvrk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvnHIEz9fU-p7BFJuYOLl-6-5x4GldT6Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "16587850912-h7g3b32g4mp4umn73jdrq205j4egjvrk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
