@@ -5,18 +5,20 @@ import '../models/mood.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
 import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
+import '../services/auth_service.dart'; // تأكد من وجود هذا الاستيراد إذا كنت تستخدم AuthService
 import '../widgets/chat_bubble.dart';
 import '../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
   final Mood selectedMood;
   final String? sessionId;
+  final VoidCallback? onSessionEnd; // Callback to notify parent (ChatTab)
 
   const ChatScreen({
     super.key,
     required this.selectedMood,
     this.sessionId,
+    this.onSessionEnd,
   });
 
   @override
@@ -32,58 +34,83 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = true;
   String? _currentSessionId;
 
-  List<Map<String, dynamic>> _previousSessions = [];
+  // لا يوجد هنا _previousSessions أو أي منطق لعرض قائمة الجلسات السابقة
+  // هذه الشاشة مخصصة لعرض جلسة دردشة واحدة فقط.
 
   @override
   void initState() {
     super.initState();
     _initializeChat();
-    _fetchPreviousSessions();
   }
 
   Future<void> _initializeChat() async {
     try {
       if (widget.sessionId != null) {
+        // إذا كان هناك sessionId موجود، قم بتحميل الرسائل لهذه الجلسة
         _currentSessionId = widget.sessionId;
-        _loadExistingChat();
+        await _loadExistingChat();
       } else {
-        _currentSessionId = await FirestoreService.createChatSession(widget.selectedMood.id);
-        _addWelcomeMessage();
+        // إذا كانت جلسة جديدة (sessionId هو null)، قم بإنشاء جلسة جديدة.
+        // نتأكد من أننا حصلنا على sessionId صالح قبل المتابعة.
+        final newSessionId = await FirestoreService.createChatSession(widget.selectedMood.id);
+        if (newSessionId != null) {
+          _currentSessionId = newSessionId;
+          _addWelcomeMessage();
+        } else {
+          print('Failed to create new chat session. Using a fallback for messages locally.');
+          _currentSessionId = null;
+          _addWelcomeMessage();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('فشل في بدء جلسة دردشة جديدة. قد لا يتم حفظ الرسائل.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
       }
     } catch (e) {
-      print('Error initializing chat: \$e');
+      print('Error initializing chat: $e');
+      _currentSessionId = null;
       _addWelcomeMessage();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في تهيئة الدردشة: $e. قد لا يتم حفظ الرسائل.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      _scrollToBottom();
     }
   }
 
-  Future<void> _fetchPreviousSessions() async {
-  print('⚠️ تم استدعاء _fetchPreviousSessions');
-  final sessions = await FirestoreService.getUserChatSessionsOnce();
-
-
-  print('🔥 عدد الجلسات المحمّلة: ${sessions.length}');
-  for (var session in sessions) {
-    print('🟢 جلسة: ${session['id']} - ${session['timestamp']}');
-  }
-
-  setState(() {
-    _previousSessions = sessions;
-  });
-}
-
-
-  void _loadExistingChat() {
+  Future<void> _loadExistingChat() async {
     if (_currentSessionId != null) {
       FirestoreService.getChatMessages(_currentSessionId!).listen((messages) {
+        if (!mounted) return;
+
         setState(() {
           _messages.clear();
           _messages.addAll(messages);
         });
         _scrollToBottom();
+      }, onError: (e) {
+        print('Error loading existing chat messages: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في تحميل الرسائل: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       });
     }
   }
@@ -133,6 +160,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty) return;
 
+    if (_currentSessionId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('لا يمكن إرسال الرسالة: لا توجد جلسة دردشة نشطة لحفظ الرسائل.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final userMessage = ChatMessage(
       id: const Uuid().v4(),
       content: messageText,
@@ -149,15 +188,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
     _scrollToBottom();
 
-    if (_currentSessionId != null) {
-      FirestoreService.addChatMessage(userMessage);
-    }
+    await FirestoreService.addChatMessage(userMessage);
 
     try {
       final aiResponse = await AIService.sendMessage(
         messageText,
         widget.selectedMood,
-        previousMessages: _messages.where((m) => !m.isFromUser).take(5).toList(),
+        previousMessages: _messages.reversed.take(10).toList().reversed.toList(),
       );
 
       final aiMessage = ChatMessage(
@@ -173,22 +210,22 @@ class _ChatScreenState extends State<ChatScreen> {
         _isTyping = false;
       });
 
-      if (_currentSessionId != null) {
-        FirestoreService.addChatMessage(aiMessage);
-      }
+      await FirestoreService.addChatMessage(aiMessage);
+      await FirestoreService.updateChatSessionLastMessageAt(_currentSessionId!, DateTime.now());
 
       _scrollToBottom();
     } catch (e) {
-      setState(() {
-        _isTyping = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('حدث خطأ في إرسال الرسالة. يرجى المحاولة مرة أخرى.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        setState(() {
+          _isTyping = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في إرسال الرسالة أو تلقي رد الذكاء الاصطناعي: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -205,12 +242,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _startNewChat() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(selectedMood: widget.selectedMood),
-      ),
-    );
+    Navigator.of(context).pop();
+    if (widget.onSessionEnd != null) {
+      widget.onSessionEnd!();
+    }
   }
 
   void _showSuggestions() {
@@ -246,6 +281,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _handleSessionEndAndPop() {
+    if (widget.onSessionEnd != null) {
+      widget.onSessionEnd!();
+    }
+    Navigator.of(context).pop();
+  }
+
   void _clearChat() {
     showDialog(
       context: context,
@@ -258,15 +300,30 @@ class _ChatScreenState extends State<ChatScreen> {
             child: const Text('إلغاء'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              setState(() {
-                _messages.clear();
-              });
+
               if (_currentSessionId != null) {
-                FirestoreService.deleteChatSession(_currentSessionId!);
+                await FirestoreService.deleteChatSession(_currentSessionId!);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم مسح المحادثة بنجاح'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } else {
+                 if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('لا توجد جلسة لحذفها.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
               }
-              Navigator.pop(context);
+              _handleSessionEndAndPop();
             },
             child: const Text('مسح'),
           ),
@@ -277,131 +334,124 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('الدردشة'),
-      ),
-      body: Column(
-        children: [
-          if (_previousSessions.isNotEmpty)
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.35,
-              child: ListView.builder(
-                itemCount: _previousSessions.length,
-                itemBuilder: (context, index) {
-                  final session = _previousSessions[index];
-                  final timestamp = session['timestamp']?.toDate();
-                  return ListTile(
-                    leading: const Icon(Icons.chat_bubble_outline),
-                    title: Text('دردشة ${index + 1}'),
-                    subtitle: timestamp != null ? Text('${timestamp.toLocal()}') : null,
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatScreen(
-                            selectedMood: widget.selectedMood,
-                            sessionId: session['id'],
-                          ),
-                        ),
-                      );
-                    },
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () async {
-                        await FirestoreService.deleteChatSession(session['id']);
-                        _fetchPreviousSessions();
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_isTyping ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index == _messages.length && _isTyping) {
-                        return const TypingIndicator()
-                            .animate()
-                            .fadeIn(duration: const Duration(milliseconds: 300));
-                      }
-
-                      final message = _messages[index];
-                      return ChatBubble(message: message)
-                          .animate(delay: Duration(milliseconds: 100 * index))
-                          .fadeIn(duration: const Duration(milliseconds: 400))
-                          .slideX(
-                            begin: message.isFromUser ? 0.3 : -0.3,
-                            end: 0,
-                          );
-                    },
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: IconButton(
-              icon: const Icon(Icons.add_circle_outline, size: 42),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _handleSessionEndAndPop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('الدردشة مع ${widget.selectedMood.arabicName}'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'بدء محادثة جديدة',
               onPressed: _startNewChat,
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+            IconButton(
+              icon: const Icon(Icons.delete_forever),
+              tooltip: 'مسح المحادثة',
+              onPressed: _clearChat,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'اكتب رسالتك هنا...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+            IconButton(
+              icon: const Icon(Icons.lightbulb_outline),
+              tooltip: 'اقتراحات للحديث',
+              onPressed: _showSuggestions,
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _messages.isEmpty && !_isTyping
+                      ? Center(
+                          child: Text(
+                            'ابدأ محادثتك الأولى مع ${widget.selectedMood.arabicName}!',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _messages.length + (_isTyping ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index == _messages.length && _isTyping) {
+                              return const TypingIndicator()
+                                  .animate()
+                                  .fadeIn(duration: const Duration(milliseconds: 300));
+                            }
+
+                            final message = _messages[index];
+                            return ChatBubble(message: message)
+                                .animate(delay: Duration(milliseconds: 100 * index))
+                                .fadeIn(duration: const Duration(milliseconds: 400))
+                                .slideX(
+                                  begin: message.isFromUser ? 0.3 : -0.3,
+                                  end: 0,
+                                );
+                          },
+                        ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: InputDecoration(
+                        hintText: 'اكتب رسالتك هنا...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).scaffoldBackgroundColor,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                       ),
-                      filled: true,
-                      fillColor: Theme.of(context).scaffoldBackgroundColor,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                      maxLines: null,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: widget.selectedMood.color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(
+                        Icons.send,
+                        color: Colors.white,
                       ),
                     ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: widget.selectedMood.color,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(
-                      Icons.send,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

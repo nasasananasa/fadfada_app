@@ -10,6 +10,8 @@ import '../screens/support_screen.dart';
 import '../screens/settings_screen.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
+import '../screens/mood_selector_screen.dart';
+import '../screens/chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +22,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+
   UserModel? _currentUser;
 
   final List<Widget> _screens = [
@@ -169,22 +172,32 @@ class _DashboardTabState extends State<DashboardTab> {
           .limit(1)
           .get();
 
+      String latestChatContent = '';
       final sessionSnapshot = await FirebaseFirestore.instance
           .collection('chat_sessions')
           .where('userId', isEqualTo: uid)
-          .orderBy('timestamp', descending: true)
+          .orderBy('createdAt', descending: true)
           .limit(1)
           .get();
+
+      if (sessionSnapshot.docs.isNotEmpty) {
+        final latestSessionId = sessionSnapshot.docs.first.id;
+        final messagesSnapshot = await FirebaseFirestore.instance
+            .collection('chat_messages')
+            .where('sessionId', isEqualTo: latestSessionId)
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+        if (messagesSnapshot.docs.isNotEmpty) {
+          latestChatContent = messagesSnapshot.docs.first.data()['content'] ?? '';
+        }
+      }
 
       final latestJournal = journalSnapshot.docs.isNotEmpty
           ? journalSnapshot.docs.first.data()['content'] ?? ''
           : '';
 
-      final latestSummary = sessionSnapshot.docs.isNotEmpty
-          ? sessionSnapshot.docs.first.data()['summary'] ?? ''
-          : '';
-
-      final combinedText = '$latestJournal\n$latestSummary'.trim();
+      final combinedText = '$latestJournal\n$latestChatContent'.trim();
 
       if (combinedText.isEmpty) {
         _dailyTip = _fallbackTip();
@@ -345,11 +358,23 @@ class _DashboardTabState extends State<DashboardTab> {
                 title: 'بدء محادثة',
                 subtitle: 'تحدث مع صديقك الافتراضي',
                 color: Colors.blue,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const ChatTab(),
-                  ),
-                ),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => MoodSelectorScreen(
+                        onMoodSelected: (mood) {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (context) => ChatScreen(selectedMood: mood),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ).then((_) {
+                    _loadDailyTip();
+                  });
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -359,11 +384,15 @@ class _DashboardTabState extends State<DashboardTab> {
                 title: 'كتابة خاطرة',
                 subtitle: 'سجل أفكارك ومشاعرك',
                 color: Colors.green,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const JournalScreen(),
-                  ),
-                ),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const JournalScreen(),
+                    ),
+                  ).then((_) {
+                    _loadDailyTip();
+                  });
+                },
               ),
             ),
           ],

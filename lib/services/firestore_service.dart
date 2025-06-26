@@ -1,185 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/chat_message.dart';
 import '../models/journal_entry.dart';
-import '../models/user_model.dart';
-import 'auth_service.dart';
+import '../models/chat_message.dart';
+import '../services/auth_service.dart';
+import 'dart:io'; // لاستخدام File
+import 'package:path_provider/path_provider.dart'; // للحصول على مسار التخزين المؤقت
+import 'dart:convert'; // لتحويل البيانات إلى JSON
 
 class FirestoreService {
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // === خدمات المحادثة ===
+  // --- دوال إدارة اليوميات (Journal Entries) ---
 
-  // إنشاء جلسة محادثة جديدة
-  static Future<String> createChatSession(String moodId) async {
-    try {
-      final userId = AuthService.currentUid;
-      if (userId == null) throw Exception('المستخدم غير مسجل الدخول');
-
-      final session = ChatSession(
-        id: '',
-        userId: userId,
-        moodId: moodId,
-        createdAt: DateTime.now(),
-        lastMessageAt: DateTime.now(),
-      );
-
-      final docRef = await _firestore
-          .collection('chat_sessions')
-          .add(session.toJson());
-
-      return docRef.id;
-    } catch (e) {
-      print('Error creating chat session: \$e');
-      rethrow;
-    }
-  }
-
-  // إضافة رسالة للمحادثة
-  static Future<void> addChatMessage(ChatMessage message) async {
-    try {
-      await _firestore
-          .collection('chat_messages')
-          .add(message.toJson());
-
-      if (message.sessionId != null) {
-        await _firestore
-            .collection('chat_sessions')
-            .doc(message.sessionId)
-            .update({
-          'lastMessageAt': FieldValue.serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      print('Error adding chat message: \$e');
-      rethrow;
-    }
-  }
-
-  // الحصول على رسائل المحادثة
-  static Stream<List<ChatMessage>> getChatMessages(String sessionId) {
-    return _firestore
-        .collection('chat_messages')
-        .where('sessionId', isEqualTo: sessionId)
-        .orderBy('timestamp')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => ChatMessage.fromFirestore(doc))
-            .toList());
-  }
-
-  // الحصول على جلسات المحادثة كـ Stream
-  static Stream<List<ChatSession>> getUserChatSessions() {
-    final userId = AuthService.currentUid;
-    if (userId == null) return Stream.value([]);
-
-    return _firestore
-        .collection('chat_sessions')
-        .where('userId', isEqualTo: userId)
-        .orderBy('lastMessageAt', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => ChatSession.fromFirestore(doc))
-            .toList());
-  }
-
-  // الحصول على جلسات المحادثة كـ Future
-  static Future<List<Map<String, dynamic>>> getUserChatSessionsOnce() async {
-  final userId = AuthService.currentUid;
-  print('📛 getUserChatSessionsOnce: userId = $userId');
-
-  if (userId == null) return [];
-
-  final querySnapshot = await _firestore
-      .collection('chat_sessions')
-      .where('userId', isEqualTo: userId)
-      .orderBy('lastMessageAt', descending: true)
-      .get();
-
-  print('📛 getUserChatSessionsOnce: loaded ${querySnapshot.docs.length} docs');
-
-  return querySnapshot.docs.map((doc) {
-    final data = doc.data();
-    data['id'] = doc.id;
-    return data;
-  }).toList();
-}
-
-  // حذف جلسة محادثة
-  static Future<void> deleteChatSession(String sessionId) async {
-    try {
-      final messages = await _firestore
-          .collection('chat_messages')
-          .where('sessionId', isEqualTo: sessionId)
-          .get();
-
-      for (final doc in messages.docs) {
-        await doc.reference.delete();
-      }
-
-      await _firestore
-          .collection('chat_sessions')
-          .doc(sessionId)
-          .delete();
-    } catch (e) {
-      print('Error deleting chat session: \$e');
-      rethrow;
-    }
-  }
-
-
-
-
-
-
-  // === خدمات اليوميات ===
-
-  // إنشاء مدخل يومية جديد
-  static Future<String> createJournalEntry(JournalEntry entry) async {
-    try {
-      final docRef = _firestore
-          .collection('journal_entries')
-          .doc(entry.id);
-
-      await docRef.set(entry.toJson());
-      return docRef.id;
-    } catch (e) {
-      print('Error creating journal entry: $e');
-      rethrow;
-    }
-  }
-
-  // تحديث مدخل يومية
-  static Future<void> updateJournalEntry(JournalEntry entry) async {
-    try {
-      await _firestore
-          .collection('journal_entries')
-          .doc(entry.id)
-          .update(entry.copyWith(updatedAt: DateTime.now()).toJson());
-    } catch (e) {
-      print('Error updating journal entry: $e');
-      rethrow;
-    }
-  }
-
-  // حذف مدخل يومية
-  static Future<void> deleteJournalEntry(String entryId) async {
-    try {
-      await _firestore
-          .collection('journal_entries')
-          .doc(entryId)
-          .delete();
-    } catch (e) {
-      print('Error deleting journal entry: $e');
-      rethrow;
-    }
-  }
-
-  // الحصول على مدخلات اليوميات للمستخدم
   static Stream<List<JournalEntry>> getUserJournalEntries() {
     final userId = AuthService.currentUid;
-    if (userId == null) return Stream.value([]);
-
-    return _firestore
+    if (userId == null) {
+      print('Error: User not logged in for journal entries.');
+      return Stream.value([]);
+    }
+    return _db
         .collection('journal_entries')
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
@@ -189,178 +27,234 @@ class FirestoreService {
             .toList());
   }
 
-  // البحث في اليوميات
-  static Future<List<JournalEntry>> searchJournalEntries(String query) async {
+  static Future<void> createJournalEntry(JournalEntry entry) async {
     try {
-      final userId = AuthService.currentUid;
-      if (userId == null) return [];
-
-      final snapshot = await _firestore
-          .collection('journal_entries')
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .get();
-
-      final entries = snapshot.docs
-          .map((doc) => JournalEntry.fromFirestore(doc))
-          .toList();
-
-      return entries.where((entry) {
-        final searchLower = query.toLowerCase();
-        return entry.title.toLowerCase().contains(searchLower) ||
-               entry.content.toLowerCase().contains(searchLower);
-      }).toList();
+      await _db.collection('journal_entries').doc(entry.id).set(entry.toJson());
     } catch (e) {
-      print('Error searching journal entries: $e');
-      return [];
+      print('Error creating journal entry: $e');
+      rethrow;
     }
   }
 
-  // الحصول على مدخلات اليوميات لتاريخ معين
-  static Future<List<JournalEntry>> getJournalEntriesForDate(DateTime date) async {
+  static Future<void> updateJournalEntry(JournalEntry entry) async {
     try {
-      final userId = AuthService.currentUid;
-      if (userId == null) return [];
-
-      final startOfDay = DateTime(date.year, date.month, date.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final snapshot = await _firestore
-          .collection('journal_entries')
-          .where('userId', isEqualTo: userId)
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
-          .orderBy('createdAt', descending: true)
-          .get();
-
-      return snapshot.docs
-          .map((doc) => JournalEntry.fromFirestore(doc))
-          .toList();
+      await _db.collection('journal_entries').doc(entry.id).update(entry.toJson());
     } catch (e) {
-      print('Error getting journal entries for date: $e');
-      return [];
+      print('Error updating journal entry: $e');
+      rethrow;
     }
   }
 
-  // === إحصائيات ومعلومات إضافية ===
-
-  // الحصول على عدد المحادثات
-  static Future<int> getUserChatSessionsCount() async {
+  static Future<void> deleteJournalEntry(String entryId) async {
     try {
-      final userId = AuthService.currentUid;
-      if (userId == null) return 0;
-
-      final snapshot = await _firestore
-          .collection('chat_sessions')
-          .where('userId', isEqualTo: userId)
-          .get();
-
-      return snapshot.docs.length;
+      await _db.collection('journal_entries').doc(entryId).delete();
     } catch (e) {
-      print('Error getting chat sessions count: $e');
-      return 0;
+      print('Error deleting journal entry: $e');
+      rethrow;
     }
   }
 
-  // الحصول على عدد اليوميات
-  static Future<int> getUserJournalEntriesCount() async {
+  // --- دوال إدارة جلسات الدردشة (Chat Sessions) ---
+
+  static Future<String?> createChatSession(String moodId) async {
     try {
       final userId = AuthService.currentUid;
-      if (userId == null) return 0;
-
-      final snapshot = await _firestore
-          .collection('journal_entries')
-          .where('userId', isEqualTo: userId)
-          .get();
-
-      return snapshot.docs.length;
-    } catch (e) {
-      print('Error getting journal entries count: $e');
-      return 0;
-    }
-  }
-
-  // الحصول على آخر جلسة محادثة
-  static Future<ChatSession?> getLastChatSession() async {
-    try {
-      final userId = AuthService.currentUid;
-      if (userId == null) return null;
-
-      final snapshot = await _firestore
-          .collection('chat_sessions')
-          .where('userId', isEqualTo: userId)
-          .orderBy('lastMessageAt', descending: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isNotEmpty) {
-        return ChatSession.fromFirestore(snapshot.docs.first);
+      if (userId == null) {
+        print('Error: User not logged in for chat session.');
+        return null;
       }
-      return null;
+      final newSessionRef = await _db.collection('chat_sessions').add({
+        'userId': userId,
+        'moodId': moodId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastMessageAt': FieldValue.serverTimestamp(),
+      });
+      return newSessionRef.id;
     } catch (e) {
-      print('Error getting last chat session: $e');
+      print('Error creating chat session: $e');
       return null;
     }
   }
 
-  // تنظيف البيانات القديمة (اختياري)
-  static Future<void> cleanupOldData({int daysToKeep = 90}) async {
+  static Future<void> addChatMessage(ChatMessage message) async {
     try {
-      final userId = AuthService.currentUid;
-      if (userId == null) return;
-
-      final cutoffDate = DateTime.now().subtract(Duration(days: daysToKeep));
-
-      final oldSessions = await _firestore
-          .collection('chat_sessions')
-          .where('userId', isEqualTo: userId)
-          .where('lastMessageAt', isLessThan: Timestamp.fromDate(cutoffDate))
-          .get();
-
-      for (final doc in oldSessions.docs) {
-        await deleteChatSession(doc.id);
+      await _db.collection('chat_messages').doc(message.id).set(message.toJson());
+      if (message.sessionId != null) {
+        await _db.collection('chat_sessions').doc(message.sessionId).update({
+          'lastMessageAt': FieldValue.serverTimestamp(),
+        });
       }
-
-      print('تم تنظيف ${oldSessions.docs.length} محادثة قديمة');
     } catch (e) {
-      print('Error cleaning up old data: $e');
+      print('Error adding chat message: $e');
+      rethrow;
     }
   }
 
-  // === خدمات النسخ الاحتياطي ===
+  static Stream<List<ChatMessage>> getChatMessages(String sessionId) {
+    return _db
+        .collection('chat_messages')
+        .where('sessionId', isEqualTo: sessionId)
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ChatMessage.fromFirestore(doc))
+            .toList());
+  }
 
-  // تصدير بيانات المستخدم
-  static Future<Map<String, dynamic>> exportUserData() async {
+  static Future<List<Map<String, dynamic>>> getUserChatSessionsOnce() async {
     try {
       final userId = AuthService.currentUid;
-      if (userId == null) throw Exception('المستخدم غير مسجل الدخول');
-
-      final chatSessions = await _firestore
+      if (userId == null) {
+        print('Error: User not logged in for chat sessions.');
+        return [];
+      }
+      final snapshot = await _db
           .collection('chat_sessions')
           .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
           .get();
+      return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
+    } catch (e) {
+      print('Error fetching user chat sessions: $e');
+      return [];
+    }
+  }
 
-      final journalEntries = await _firestore
+  static Future<void> deleteChatSession(String sessionId) async {
+    try {
+      final messagesSnapshot = await _db
+          .collection('chat_messages')
+          .where('sessionId', isEqualTo: sessionId)
+          .get();
+      for (var doc in messagesSnapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      await _db.collection('chat_sessions').doc(sessionId).delete();
+    } catch (e) {
+      print('Error deleting chat session: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> updateChatSessionLastMessageAt(String sessionId, DateTime timestamp) async {
+    try {
+      await _db.collection('chat_sessions').doc(sessionId).update({
+        'lastMessageAt': Timestamp.fromDate(timestamp),
+      });
+    } catch (e) {
+      print('Error updating chat session last message at: $e');
+      rethrow;
+    }
+  }
+
+  // --- دوال جديدة للتعامل مع البيانات في SettingsScreen ---
+
+  // دالة لتصدير بيانات المستخدم
+  static Future<String> exportUserData() async {
+    final userId = AuthService.currentUid;
+    if (userId == null) {
+      throw Exception('User not logged in.');
+    }
+
+    try {
+      // جمع بيانات اليوميات
+      final journalSnapshot = await _db
           .collection('journal_entries')
           .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
           .get();
+      final journalData = journalSnapshot.docs.map((doc) => doc.data()).toList();
 
-      final userData = await AuthService.getUserData(userId);
+      // جمع بيانات جلسات الدردشة
+      final chatSessionsSnapshot = await _db
+          .collection('chat_sessions')
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      final chatSessionIds = chatSessionsSnapshot.docs.map((doc) => doc.id).toList();
 
-      return {
-        'exportDate': DateTime.now().toIso8601String(),
-        'user': userData?.toJson(),
-        'chatSessions': chatSessions.docs.map((doc) => {
-          'id': doc.id,
-          ...doc.data(),
-        }).toList(),
-        'journalEntries': journalEntries.docs.map((doc) => {
-          'id': doc.id,
-          ...doc.data(),
-        }).toList(),
+      final List<Map<String, dynamic>> chatSessionsData = [];
+      for (var sessionDoc in chatSessionsSnapshot.docs) {
+        final sessionId = sessionDoc.id;
+        final messagesSnapshot = await _db
+            .collection('chat_messages')
+            .where('sessionId', isEqualTo: sessionId)
+            .orderBy('timestamp', descending: false)
+            .get();
+        final messagesData = messagesSnapshot.docs.map((doc) => doc.data()).toList();
+        
+        final sessionMap = sessionDoc.data();
+        sessionMap['messages'] = messagesData; // إضافة الرسائل ضمن بيانات الجلسة
+        chatSessionsData.add(sessionMap);
+      }
+
+      final userData = {
+        'userId': userId,
+        'journal_entries': journalData,
+        'chat_sessions': chatSessionsData,
+        'export_date': DateTime.now().toIso8601String(),
       };
+
+      final jsonString = jsonEncode(userData);
+      
+      // حفظ الملف في مجلد التنزيلات المؤقتة
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/user_data_${userId}.json';
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+
+      return filePath; // إرجاع مسار الملف الذي تم إنشاؤه
     } catch (e) {
       print('Error exporting user data: $e');
+      rethrow;
+    }
+  }
+
+  // دالة لتنظيف البيانات القديمة (مثال: حذف خواطر ورسائل أقدم من سنة)
+  static Future<void> cleanupOldData() async {
+    final userId = AuthService.currentUid;
+    if (userId == null) {
+      throw Exception('User not logged in.');
+    }
+
+    try {
+      final oneYearAgo = DateTime.now().subtract(const Duration(days: 365));
+
+      // حذف خواطر أقدم من سنة
+      final oldJournalEntries = await _db
+          .collection('journal_entries')
+          .where('userId', isEqualTo: userId)
+          .where('createdAt', isLessThan: oneYearAgo)
+          .get();
+      for (var doc in oldJournalEntries.docs) {
+        await doc.reference.delete();
+      }
+      print('Deleted ${oldJournalEntries.docs.length} old journal entries.');
+
+      // حذف جلسات الدردشة ورسائلها المرتبطة أقدم من سنة
+      final oldChatSessions = await _db
+          .collection('chat_sessions')
+          .where('userId', isEqualTo: userId)
+          .where('createdAt', isLessThan: oneYearAgo)
+          .get();
+      
+      for (var sessionDoc in oldChatSessions.docs) {
+        final sessionId = sessionDoc.id;
+        // حذف الرسائل المرتبطة أولاً
+        final oldChatMessages = await _db
+            .collection('chat_messages')
+            .where('sessionId', isEqualTo: sessionId)
+            .get();
+        for (var msgDoc in oldChatMessages.docs) {
+          await msgDoc.reference.delete();
+        }
+        await sessionDoc.reference.delete(); // حذف الجلسة نفسها
+      }
+      print('Deleted ${oldChatSessions.docs.length} old chat sessions and their messages.');
+
+    } catch (e) {
+      print('Error cleaning up old data: $e');
       rethrow;
     }
   }

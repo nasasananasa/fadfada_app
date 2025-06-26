@@ -112,22 +112,27 @@ class SupportScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              children: [
-                Icon(
-                  Icons.emergency,
-                  color: Colors.red[600],
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'حالات الطوارئ النفسية',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red[700],
+                children: [
+                  Icon(
+                    Icons.emergency,
+                    color: Colors.red[600],
+                    size: 28,
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 12),
+                  Expanded( // تم إضافة Expanded هنا
+                    child: Text(
+                      'حالات الطوارئ النفسية',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red[700],
+                          ),
+                      // يمكنك إضافة overflow هنا إذا كان النص ديناميكياً ويمكن أن يصبح طويلاً جداً
+                      // overflow: TextOverflow.ellipsis,
+                      // maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: 16),
             Text(
               'إذا كنت تفكر في إيذاء نفسك أو الآخرين، يرجى التواصل فوراً مع:',

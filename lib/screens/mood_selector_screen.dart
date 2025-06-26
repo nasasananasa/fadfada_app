@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/mood.dart';
 import '../screens/chat_screen.dart';
-import '../services/firestore_service.dart';
 import '../widgets/custom_button.dart';
 
 class MoodSelectorScreen extends StatefulWidget {
-  const MoodSelectorScreen({super.key});
+  final void Function(Mood)? onMoodSelected;
+  const MoodSelectorScreen({super.key, this.onMoodSelected});
 
   @override
   State<MoodSelectorScreen> createState() => _MoodSelectorScreenState();
@@ -15,84 +15,47 @@ class MoodSelectorScreen extends StatefulWidget {
 class _MoodSelectorScreenState extends State<MoodSelectorScreen> {
   Mood? _selectedMood;
   final List<Mood> _moods = Mood.getAllMoods();
-  List<Map<String, dynamic>> _previousSessions = [];
-  bool _showMoodList = false;
+  // تم حذف: List<Map<String, dynamic>> _previousSessions = [];
+  // تم حذف: bool _showMoodList = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchPreviousSessions();
+    // تم حذف: _fetchPreviousSessions();
   }
 
-  Future<void> _fetchPreviousSessions() async {
-    final sessions = await FirestoreService.getUserChatSessionsOnce();
-    setState(() {
-      _previousSessions = sessions;
-    });
-  }
+  // تم حذف: Future<void> _fetchPreviousSessions() ...
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الدردشة'),
+        title: const Text('اختر حالتك المزاجية'), // تم تغيير العنوان ليتناسب مع الوظيفة
         centerTitle: true,
       ),
       body: Column(
         children: [
-          if (!_showMoodList && _previousSessions.isNotEmpty)
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _previousSessions.length,
-                itemBuilder: (context, index) {
-                  final session = _previousSessions[index];
-                  final timestamp = session['timestamp']?.toDate();
-                  return Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.chat_bubble_outline),
-                      title: Text('دردشة ${index + 1}'),
-                      subtitle: timestamp != null ? Text('${timestamp.toLocal()}') : null,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatScreen(
-                              selectedMood: Mood.defaultMood(),
-                              sessionId: session['id'],
-                            ),
-                          ),
-                        );
-                      },
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          await FirestoreService.deleteChatSession(session['id']);
-                          _fetchPreviousSessions();
-                        },
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+          // تم حذف: عرض قائمة الدردشات السابقة (ListView.builder)
+          // تم حذف: if (!_showMoodList && _previousSessions.isNotEmpty) ...
 
-          if (_showMoodList) Expanded(child: _buildMoodList()),
+          // تم تعديل هذا الجزء ليعرض دائما قائمة المزاج
+          Expanded(child: _buildMoodList()),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: IconButton(
-              icon: Icon(
-                _showMoodList ? Icons.close : Icons.add_circle_outline,
-                size: 42,
-              ),
-              onPressed: () {
-                setState(() {
-                  _showMoodList = !_showMoodList;
-                });
-              },
-            ),
-          ),
+          // تم حذف: زر الـ +/X السفلي لأنه لا يوجد تبديل بين القوائم هنا
+          // Padding(
+          //   padding: const EdgeInsets.symmetric(vertical: 16),
+          //   child: IconButton(
+          //     icon: Icon(
+          //       _showMoodList ? Icons.close : Icons.add_circle_outline,
+          //       size: 42,
+          //     ),
+          //     onPressed: () {
+          //       setState(() {
+          //         _showMoodList = !_showMoodList;
+          //       });
+          //     },
+          //   ),
+          // ),
         ],
       ),
     );
@@ -237,11 +200,16 @@ class _MoodSelectorScreenState extends State<MoodSelectorScreen> {
 
   void _startChat() {
     if (_selectedMood != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ChatScreen(selectedMood: _selectedMood!),
-        ),
-      );
+      if (widget.onMoodSelected != null) {
+        widget.onMoodSelected!(_selectedMood!);
+      } else {
+        // إذا لم يتم تمرير onMoodSelected (وهذا يحدث إذا تم فتح الشاشة كـ route مباشر)
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(selectedMood: _selectedMood!),
+          ),
+        );
+      }
     }
   }
 }

@@ -5,104 +5,107 @@ import '../models/mood.dart';
 import '../models/chat_message.dart';
 
 class AIService {
-  // يمكن استخدام OpenAI أو MiniMax API
+  // عنوان URL الأساسي لـ OpenAI API
   static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
-  final apiKey = dotenv.env['OPENAI_API_KEY'];
-  
-  // تخزين السياق للمحادثة
-  static List<Map<String, String>> _conversationHistory = [];
 
-  // إرسال رسالة وتلقي الرد
+  // إرسال رسالة وتلقي الرد من AI
   static Future<String> sendMessage(
-    String message, 
-    Mood selectedMood, 
+    String message,
+    Mood selectedMood,
     {List<ChatMessage>? previousMessages}
   ) async {
     try {
-      // بناء السياق للمحادثة
+      // بناء prompt النظام (system prompt) بناءً على الحالة المزاجية
       final systemPrompt = _buildSystemPrompt(selectedMood);
+
+      // بناء تاريخ الرسائل الذي سيُرسل إلى API
       final messages = _buildMessageHistory(systemPrompt, message, previousMessages);
 
-      // استعمال واجهة برمجية محلية للاختبار
-      // في الإنتاج، يتم استخدام OpenAI أو MiniMax API الحقيقي
-      return await _getLocalAIResponse(message, selectedMood);
+      // تفعيل كود API الحقيقي وإرسال الطلب إلى OpenAI
+      return await _sendToOpenAI(messages);
       
-      // كود API الحقيقي (يتم تفعيله لاحقاً):
-      // return await _sendToOpenAI(messages);
+      // الكود السابق للاستجابة المحلية (للاختبار) تم تعليقه
+      // return await _getLocalAIResponse(message, selectedMood);
       
     } catch (e) {
+      // طباعة الخطأ والتعامل معه بتقديم رسالة خطأ ودودة للمستخدم
       print('AI Service Error: $e');
       return _getErrorResponse(selectedMood);
     }
   }
 
-  // بناء prompt النظام حسب الحالة النفسية
+  // بناء prompt النظام (system prompt) حسب الحالة النفسية
   static String _buildSystemPrompt(Mood mood) {
+    // التعليمات الأساسية لشخصية المساعد الافتراضي
     final basePrompt = '''
 أنت صديق افتراضي متفهم ومساعد في تطبيق "فضفضة" للدعم النفسي الأولي.
 مهمتك تقديم الدعم العاطفي والنصائح البسيطة بطريقة ودودة ومتفهمة.
 
 إرشادات مهمة:
-- اكتب باللغة العربية فقط
-- كن متعاطفاً ومستمعاً جيداً
-- قدم نصائح بناءة وإيجابية
-- لا تقدم تشخيصات طبية
-- اقترح طلب المساعدة المهنية عند الحاجة
-- حافظ على محادثة طبيعية وودودة
-- استخدم أسلوباً بسيطاً ومفهوماً
+- اكتب باللغة العربية فقط.
+- كن متعاطفاً ومستمعاً جيداً.
+- قدم نصائح بناءة وإيجابية.
+- لا تقدم تشخيصات طبية أو علاجية.
+- اقترح طلب المساعدة المهنية عند الحاجة (مثال: "قد يكون من المفيد التحدث مع متخصص في هذا الشأن").
+- حافظ على محادثة طبيعية وودودة.
+- استخدم أسلوباً بسيطاً ومفهوماً.
 ''';
 
-    // إضافة نصائح خاصة بالحالة النفسية
+    // إضافة تعليمات خاصة بالحالة النفسية المحددة
     final moodSpecificPrompt = _getMoodSpecificPrompt(mood);
     
+    // دمج التعليمات الأساسية مع التعليمات الخاصة بالمزاج
     return '$basePrompt\n\n$moodSpecificPrompt';
   }
 
-  // نصائح خاصة بكل حالة نفسية
+  // نصائح خاصة بكل حالة نفسية (لتضمينها في System Prompt)
   static String _getMoodSpecificPrompt(Mood mood) {
     switch (mood.id) {
       case 'happy':
-        return 'المستخدم يشعر بالسعادة. ساعده على الحفاظ على هذه المشاعر الإيجابية.';
+        return 'المستخدم يشعر بالسعادة. ركز على تعزيز هذا الشعور واستكشاف أسبابه، وساعده على الحفاظ على هذه المشاعر الإيجابية.';
       case 'anxious':
-        return 'المستخدم يشعر بالقلق. قدم له تقنيات تهدئة وطمأنة بسيطة.';
+        return 'المستخدم يشعر بالقلق. ركز على الاستماع لمخاوفه، قدم له تقنيات تهدئة وطمأنة بسيطة، وشجعه على التعبير عن ما يقلقه.';
       case 'sad':
-        return 'المستخدم يشعر بالحزن. كن متعاطفاً واقترح أنشطة إيجابية.';
+        return 'المستخدم يشعر بالحزن. كن متعاطفاً جداً، قدم له مساحة آمنة للتعبير عن حزنه دون حكم، واقترح أنشطة إيجابية قد تساعده تدريجياً.';
       case 'stressed':
-        return 'المستخدم يشعر بالتوتر. اقترح تقنيات إدارة التوتر والاسترخاء.';
+        return 'المستخدم يشعر بالتوتر. ركز على فهم مصادر التوتر لديه، اقترح تقنيات إدارة التوتر والاسترخاء، وشجعه على إيجاد حلول عملية إن أمكن.';
       case 'confused':
-        return 'المستخدم يشعر بالتشويش. ساعده على تنظيم أفكاره وإيجاد وضوح.';
+        return 'المستخدم يشعر بالتشويش. ساعده على تنظيم أفكاره وتوضيح الأمور، واطرح أسئلة تساعده على فهم الوضع بشكل أفضل.';
       case 'tired':
-        return 'المستخدم يشعر بالتعب. اقترح طرق الراحة واستعادة الطاقة.';
+        return 'المستخدم يشعر بالتعب. أقر بتعبه، واقترح طرق الراحة واستعادة الطاقة، وشجعه على أخذ قسط كافٍ من النوم.';
       case 'angry':
-        return 'المستخدم يشعر بالغضب. ساعده على تهدئة نفسه وإدارة غضبه.';
+        return 'المستخدم يشعر بالغضب. استمع لسبب غضبه دون الحكم، ساعده على تهدئة نفسه وإدارة غضبه بطرق صحية، واقترح عليه التعبير عن غضبه بطريقة بناءة.';
       case 'peaceful':
-        return 'المستخدم يشعر بالهدوء. ساعده على الحفاظ على هذا الشعور.';
+        return 'المستخدم يشعر بالهدوء. استكشف معه أسباب هذا الشعور الجميل، وساعده على الحفاظ على هذا الشعور واستعادته في المستقبل.';
       default:
-        return 'استمع للمستخدم وقدم الدعم المناسب.';
+        return 'استمع للمستخدم جيداً، وتعاطف معه، وقدم الدعم المناسب بناءً على ما يعبر عنه.';
     }
   }
 
-  // بناء تاريخ الرسائل
+  // بناء تاريخ الرسائل (يتضمن System Prompt والرسائل السابقة والحالية)
   static List<Map<String, String>> _buildMessageHistory(
-    String systemPrompt, 
+    String systemPrompt,
     String currentMessage,
     List<ChatMessage>? previousMessages
   ) {
     final messages = <Map<String, String>>[];
     
-    // إضافة prompt النظام
+    // 1. إضافة prompt النظام في البداية لتحديد شخصية AI
     messages.add({
       'role': 'system',
       'content': systemPrompt,
     });
 
-    // إضافة الرسائل السابقة (آخر 10 رسائل فقط لتوفير الذاكرة)
+    // 2. إضافة الرسائل السابقة (من المستخدم و AI) للحفاظ على السياق
+    // نأخذ آخر 10 رسائل فقط (أو عدد أقل إذا كانت المحادثة أقصر) لتجنب تجاوز حد الـ tokens
     if (previousMessages != null && previousMessages.isNotEmpty) {
-      final recentMessages = previousMessages.length > 10 
+      // هذا الجزء تم تعديله في chat_screen، ولكن هنا نضمن أنه إذا تم تمرير القائمة كاملة
+      // فإننا نأخذ منها آخر 10 رسائل فقط قبل إضافتها إلى الـ messages
+      final effectivePreviousMessages = previousMessages.length > 10 
           ? previousMessages.sublist(previousMessages.length - 10)
           : previousMessages;
           
-      for (final msg in recentMessages) {
+      for (final msg in effectivePreviousMessages) {
         messages.add({
           'role': msg.isFromUser ? 'user' : 'assistant',
           'content': msg.content,
@@ -110,7 +113,7 @@ class AIService {
       }
     }
 
-    // إضافة الرسالة الحالية
+    // 3. إضافة الرسالة الحالية من المستخدم
     messages.add({
       'role': 'user',
       'content': currentMessage,
@@ -119,7 +122,7 @@ class AIService {
     return messages;
   }
 
-  // استجابة AI محلية للاختبار
+  // دالة الاستجابة المحلية (للاختبار) - معطلة الآن
   static Future<String> _getLocalAIResponse(String message, Mood mood) async {
     // محاكاة تأخير API
     await Future.delayed(const Duration(milliseconds: 1500));
@@ -130,7 +133,7 @@ class AIService {
     return responses.first;
   }
 
-  // ردود تجريبية للاختبار
+  // ردود تجريبية للاختبار (تُستخدم فقط من _getLocalAIResponse)
   static List<String> _getTestResponses(Mood mood, String message) {
     final messageWords = message.toLowerCase();
     
@@ -200,42 +203,61 @@ class AIService {
     }
   }
 
-  // رسالة خطأ ودودة
+  // رسالة خطأ ودودة ليتم عرضها للمستخدم في حالة فشل الاتصال بالـ AI
   static String _getErrorResponse(Mood mood) {
-    return 'أعتذر، واجهت مشكلة تقنية. لكن أريدك أن تعلم أنني هنا لأساعدك. هل يمكنك إعادة المحاولة؟';
+    return 'أعتذر، واجهت مشكلة تقنية أثناء محاولة الاتصال. لكن أريدك أن تعلم أنني هنا لأساعدك. هل يمكنك إعادة المحاولة؟';
   }
 
-  // إرسال للـ OpenAI API الحقيقي (للاستخدام المستقبلي)
+  // إرسال الطلب إلى OpenAI API الحقيقي
   static Future<String> _sendToOpenAI(List<Map<String, String>> messages) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY'];
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode({
-        'model': 'gpt-3.5-turbo',
-        'messages': messages,
-        'max_tokens': 500,
-        'temperature': 0.7,
-      }),
-    );
+    final apiKey = dotenv.env['OPENAI_API_KEY']; // جلب مفتاح API من ملف .env
+    if (apiKey == null || apiKey.isEmpty) {
+      // إلقاء استثناء إذا كان المفتاح غير موجود أو فارغ
+      throw Exception('OpenAI API Key is not configured in .env file.');
+    }
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['choices'][0]['message']['content'].trim();
-    } else {
-      throw Exception('فشل في الاتصال بخدمة الذكاء الصناعي');
+    try {
+      final response = await http.post(
+        Uri.parse(_baseUrl), // استخدام عنوان الـ API الثابت
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey', // تمرير المفتاح في Header
+        },
+        body: jsonEncode({
+          'model': 'gpt-3.5-turbo', // اسم النموذج المستخدم
+          'messages': messages, // تاريخ المحادثة بالكامل
+          'max_tokens': 500, // الحد الأقصى لعدد التوكنات في الرد
+          'temperature': 0.7, // درجة الحرارة للتحكم في مدى عشوائية الرد
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        // إذا كان الرد ناجحاً (HTTP 200 OK)
+        final data = jsonDecode(response.body);
+        return data['choices'][0]['message']['content'].toString().trim();
+      } else {
+        // إذا كان هناك خطأ في رد الـ API
+        print('Error response from OpenAI: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        // إلقاء استثناء مع رسالة خطأ توضح المشكلة
+        throw Exception(
+            'فشل في الاتصال بخدمة الذكاء الصناعي. الكود: ${response.statusCode}، الرسالة: ${response.body}');
+      }
+    } catch (e) {
+      // التعامل مع الأخطاء التي قد تحدث أثناء عملية إرسال الطلب (مثل مشاكل الشبكة)
+      print('Exception during API call to OpenAI: $e');
+      rethrow; // إعادة إلقاء الاستثناء للتعامل معه في الطبقة الأعلى (ChatScreen)
     }
   }
 
-  // تنظيف تاريخ المحادثة
+  // دالة لتنظيف تاريخ المحادثة المخزن (إذا كان هناك تاريخ محلي مخزن)
   static void clearConversationHistory() {
-    _conversationHistory.clear();
+    // هذا المتغير كان لتخزين الـ history محلياً، ولكنه غير مستخدم حالياً
+    // لأن الـ history يتم تمريره مع كل طلب API.
+    // _conversationHistory.clear();
   }
 
-  // الحصول على اقتراحات للرسائل الأولى
+  // الحصول على اقتراحات للرسائل الأولى بناءً على الحالة المزاجية
   static List<String> getConversationStarters(Mood mood) {
     switch (mood.id) {
       case 'happy':
@@ -262,7 +284,7 @@ class AIService {
           'لدي الكثير من الأمور المقلقة',
           'أحتاج مساعدة في التعامل مع الضغوط',
         ];
-      default:
+      default: // تشمل confused, tired, angry, peaceful وأي مزاج غير معرف
         return [
           'أريد أن أتحدث عن شعوري',
           'كيف يمكنني التعامل مع هذا الوضع؟',
