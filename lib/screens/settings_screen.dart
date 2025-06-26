@@ -5,6 +5,9 @@ import '../services/firestore_service.dart';
 import '../models/user_model.dart';
 import '../screens/login_screen.dart';
 import '../widgets/custom_button.dart';
+import 'package:path_provider/path_provider.dart'; 
+import 'dart:io';
+import 'package:share_plus/share_plus.dart'; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,6 +22,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _darkModeEnabled = false;
   double _fontSize = 14.0;
+  bool _chatHistoryEnabled = true; 
+  bool _analyticsEnabled = false; 
 
   @override
   void initState() {
@@ -28,7 +33,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadUserData() async {
     try {
-      // الانتظار حتى يصبح المستخدم الحالي جاهزًا
       int retry = 0;
       while (AuthService.currentUid == null && retry < 10) {
         await Future.delayed(const Duration(milliseconds: 300));
@@ -37,13 +41,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final uid = AuthService.currentUid;
       if (uid != null) {
-        final user = await AuthService.getUserData(uid);
+        final user = await FirestoreService.getUserProfile(); 
         if (mounted && user != null) {
           setState(() {
             _currentUser = user;
             _notificationsEnabled = user.notificationsEnabled;
             _darkModeEnabled = user.isDarkMode;
             _fontSize = user.fontSize;
+            _chatHistoryEnabled = user.getPreference('chatHistory', true); 
+            _analyticsEnabled = user.getPreference('analytics', false); 
             _isLoading = false;
           });
         } else if (mounted) {
@@ -61,6 +67,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _isLoading = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في تحميل بيانات المستخدم: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -79,7 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // معلومات المستخدم
                   _buildUserSection()
                       .animate()
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -87,7 +98,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 24),
                   
-                  // إعدادات العرض
                   _buildDisplaySettings()
                       .animate(delay: const Duration(milliseconds: 200))
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -95,7 +105,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 24),
                   
-                  // إعدادات الخصوصية
                   _buildPrivacySettings()
                       .animate(delay: const Duration(milliseconds: 400))
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -103,7 +112,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 24),
                   
-                  // إعدادات البيانات
                   _buildDataSettings()
                       .animate(delay: const Duration(milliseconds: 600))
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -111,7 +119,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 24),
                   
-                  // معلومات التطبيق
                   _buildAppInfo()
                       .animate(delay: const Duration(milliseconds: 800))
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -119,7 +126,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 32),
                   
-                  // تسجيل الخروج
                   _buildSignOutSection()
                       .animate(delay: const Duration(milliseconds: 1000))
                       .fadeIn(duration: const Duration(milliseconds: 600))
@@ -136,7 +142,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // صورة المستخدم
             CircleAvatar(
               radius: 40,
               backgroundImage: _currentUser?.photoURL != null 
@@ -148,7 +153,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             
-            // اسم المستخدم
             Text(
               _currentUser?.displayName ?? 'مستخدم',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -157,7 +161,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 4),
             
-            // البريد الإلكتروني
             Text(
               _currentUser?.email ?? '',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -166,7 +169,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             
-            // تاريخ التسجيل
             Text(
               'عضو منذ: ${_currentUser?.createdAt.day}/${_currentUser?.createdAt.month}/${_currentUser?.createdAt.year}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -194,23 +196,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             
-            // الوضع المظلم
             _buildSwitchTile(
               icon: Icons.dark_mode,
-              title: 'الوضع المظلم',
-              subtitle: 'تفعيل المظهر المظلم للتطبيق',
+              title: const Text('الوضع المظلم'), 
+              subtitle: const Text('تفعيل المظهر المظلم للتطبيق'), 
               value: _darkModeEnabled,
-              onChanged: (value) async {
+              onChanged: (bool value) {
                 setState(() {
                   _darkModeEnabled = value;
                 });
-                await _updateUserPreference('darkMode', value);
+                _updateUserPreference('darkMode', value);
               },
             ),
             
             const Divider(),
             
-            // حجم الخط
             ListTile(
               leading: const Icon(Icons.text_fields),
               title: const Text('حجم الخط'),
@@ -260,11 +260,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             
-            // الإشعارات
             _buildSwitchTile(
               icon: Icons.notifications,
-              title: 'الإشعارات',
-              subtitle: 'تلقي إشعارات من التطبيق',
+              title: const Text('الإشعارات'), 
+              subtitle: const Text('تلقي إشعارات من التطبيق'), 
               value: _notificationsEnabled,
               onChanged: (value) async {
                 setState(() {
@@ -275,8 +274,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             
             const Divider(),
+            // خيار حفظ سجل المحادثات (تم إعادته من UserModel)
+            _buildSwitchTile(
+              icon: Icons.history,
+              title: const Text('حفظ سجل المحادثات'),
+              subtitle: const Text('يسمح للذكاء الاصطناعي بتذكر محادثاتك السابقة لتخصيص الردود.'),
+              value: _chatHistoryEnabled,
+              onChanged: (bool value) {
+                setState(() {
+                  _chatHistoryEnabled = value;
+                });
+                _updateUserPreference('chatHistory', value);
+                if (!value) {
+                  _showChatHistoryWarning(); // استدعاء الدالة هنا
+                }
+              },
+            ),
+            const Divider(),
+            // خيار مشاركة بيانات الاستخدام (Analytics)
+            _buildSwitchTile(
+              icon: Icons.analytics,
+              title: const Text('مشاركة بيانات الاستخدام (Analytics)'),
+              subtitle: const Text('المساعدة في تحسين التطبيق عن طريق مشاركة البيانات المجهولة.'),
+              value: _analyticsEnabled,
+              onChanged: (bool value) async {
+                setState(() {
+                  _analyticsEnabled = value;
+                });
+                await _updateUserPreference('analytics', value);
+              },
+            ),
+            const Divider(),
             
-            // سياسة الخصوصية
             ListTile(
               leading: const Icon(Icons.privacy_tip),
               title: const Text('سياسة الخصوصية'),
@@ -287,7 +316,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             const Divider(),
             
-            // شروط الاستخدام
             ListTile(
               leading: const Icon(Icons.description),
               title: const Text('شروط الاستخدام'),
@@ -316,7 +344,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             
-            // تصدير البيانات
             ListTile(
               leading: const Icon(Icons.download),
               title: const Text('تصدير بياناتي'),
@@ -327,7 +354,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             const Divider(),
             
-            // مسح البيانات القديمة
             ListTile(
               leading: const Icon(Icons.cleaning_services),
               title: const Text('تنظيف البيانات'),
@@ -338,7 +364,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             const Divider(),
             
-            // حذف الحساب
             ListTile(
               leading: const Icon(Icons.delete_forever, color: Colors.red),
               title: const Text('حذف الحساب', style: TextStyle(color: Colors.red)),
@@ -406,17 +431,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // تم تعديل هذه الدالة لتستقبل Widget بدلاً من String لـ title و subtitle
   Widget _buildSwitchTile({
     required IconData icon,
-    required String title,
-    required String subtitle,
+    required Widget title, 
+    required Widget subtitle, 
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
     return ListTile(
       leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
+      title: title, 
+      subtitle: subtitle, 
       trailing: Switch(
         value: value,
         onChanged: onChanged,
@@ -429,17 +455,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_currentUser != null) {
       try {
         final updatedUser = _currentUser!.updatePreference(key, value);
-        await AuthService.updateUserData(updatedUser);
-        _currentUser = updatedUser;
+        await FirestoreService.saveUserProfile(updatedUser);
+        if (mounted) {
+          setState(() {
+            _currentUser = updatedUser;
+          });
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في حفظ الإعدادات: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطأ في حفظ الإعدادات: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
+  }
+
+  // **تمت إضافة هذه الدالة الناقصة**
+  void _showChatHistoryWarning() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تنبيه: سجل المحادثات'),
+        content: const Text(
+            'إذا قمت بإيقاف حفظ سجل المحادثات، فلن يتمكن فضفضة من تذكر محادثاتك السابقة لتخصيص الردود. هل أنت متأكد؟'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _chatHistoryEnabled = true; // Revert if user cancels
+              });
+              _updateUserPreference('chatHistory', true); // إعادة التفضيل
+            },
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // الاستمرار في تعطيل سجل المحادثات، المنطق تم التعامل معه بالفعل في onChanged
+            },
+            child: const Text('تأكيد'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showPrivacyPolicy() {
@@ -512,41 +575,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _exportData() async {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تصدير البيانات'),
-        content: const Text('سيتم إرسال نسخة من بياناتك إلى بريدك الإلكتروني خلال 24 ساعة.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
+    // عرض مؤشر التحميل
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(width: 16),
+              Text('جارٍ تصدير بياناتك...'),
+            ],
           ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await FirestoreService.exportUserData();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم طلب تصدير البيانات بنجاح'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('خطأ في تصدير البيانات: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('تصدير'),
+          duration: Duration(days: 365), // Show indefinitely
+          backgroundColor: Colors.blueAccent,
+        ),
+      );
+    }
+
+    try {
+      if (AuthService.currentUid == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('الرجاء تسجيل الدخول لتصدير بياناتك.'),
+                backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+      final filePath = await FirestoreService.exportUserData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        if (filePath.isNotEmpty) {
+          await Share.shareXFiles([XFile(filePath)], text: 'بياناتي من تطبيق فضفضة.');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('تم تصدير البيانات بنجاح ومشاركتها!'),
+                backgroundColor: Colors.green),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('فشل في تصدير البيانات.'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في تصدير البيانات: $e'),
+            backgroundColor: Colors.red,
           ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 
   void _cleanupOldData() {
@@ -564,20 +649,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
+                if (AuthService.currentUid == null) { 
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('الرجاء تسجيل الدخول لتنظيف بياناتك.'),
+                          backgroundColor: Colors.orange),
+                    );
+                  }
+                  return;
+                }
+                // عرض مؤشر التحميل
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(width: 16),
+                          Text('جارٍ تنظيف البيانات...'),
+                        ],
+                      ),
+                      duration: Duration(days: 365), 
+                      backgroundColor: Colors.blueAccent,
+                    ),
+                  );
+                }
+
                 await FirestoreService.cleanupOldData();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم تنظيف البيانات القديمة بنجاح'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم تنظيف البيانات القديمة بنجاح'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('خطأ في تنظيف البيانات: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('خطأ في تنظيف البيانات: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('تنظيف'),
@@ -612,12 +730,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('خطأ في حذف الحساب: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('خطأ في حذف الحساب: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -629,12 +749,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _rateApp() {
-    // في الإنتاج، سيتم توجيه المستخدم لمتجر التطبيقات
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('شكراً لك! سيتم توجيهك لمتجر التطبيقات'),
-      ),
-    );
+    if (mounted) { 
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('شكراً لك! سيتم توجيهك لمتجر التطبيقات'),
+        ),
+      );
+    }
   }
 
   void _signOut() async {
@@ -660,12 +781,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('خطأ في تسجيل الخروج: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                if (mounted) { 
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('خطأ في تسجيل الخروج: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('تسجيل الخروج'),

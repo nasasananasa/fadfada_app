@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:uuid/uuid.dart';
 import '../models/journal_entry.dart';
-import '../models/mood.dart';
-import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
+import '../models/mood.dart'; 
+import '../services/firestore_service.dart'; // **تأكد من الاستيراد**
+import '../services/auth_service.dart'; // **تأكد من الاستيراد**
 import '../widgets/custom_button.dart';
 import '../widgets/journal_entry_card.dart';
 import 'journal_edit_screen.dart';
@@ -32,7 +32,7 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 
   void _loadEntries() {
-    _subscription?.cancel(); // إلغاء الاشتراك السابق
+    _subscription?.cancel(); 
     setState(() => _isLoading = true);
 
     _subscription = FirestoreService.getUserJournalEntries().listen((entries) {
@@ -47,6 +47,12 @@ class _JournalScreenState extends State<JournalScreen> {
       if (!mounted) return;
       print('❌ خطأ أثناء تحميل اليوميات: $e');
       setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar( 
+        SnackBar(
+          content: Text('حدث خطأ في تحميل اليوميات: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     });
   }
 
@@ -113,8 +119,8 @@ class _JournalScreenState extends State<JournalScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredEntries.isEmpty
-                    ? _buildEmptyState()
-                    : _buildEntriesList(),
+                        ? _buildEmptyState()
+                        : _buildEntriesList(),
           ),
         ],
       ),
@@ -145,8 +151,9 @@ class _JournalScreenState extends State<JournalScreen> {
           Text(
             _searchQuery.isNotEmpty ? 'لا توجد نتائج' : 'لا توجد خواطر بعد',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
+            textAlign: TextAlign.center,
           )
               .animate(delay: const Duration(milliseconds: 200))
               .fadeIn()
@@ -157,8 +164,8 @@ class _JournalScreenState extends State<JournalScreen> {
                 ? 'جرب كلمات بحث أخرى'
                 : 'ابدأ بكتابة أول خاطرة لك',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Colors.grey[500],
-            ),
+                  color: Colors.grey[500],
+                ),
             textAlign: TextAlign.center,
           )
               .animate(delay: const Duration(milliseconds: 400))
@@ -218,7 +225,7 @@ class _JournalScreenState extends State<JournalScreen> {
       ),
     );
     if (result == true) {
-      _loadEntries();
+      _loadEntries(); // Reload entries after creating a new one
     }
   }
 
@@ -254,6 +261,7 @@ class _JournalScreenState extends State<JournalScreen> {
                     ),
                   );
                 }
+                _loadEntries(); // بعد الحذف، أعد تحميل اليوميات لتحديث القائمة
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

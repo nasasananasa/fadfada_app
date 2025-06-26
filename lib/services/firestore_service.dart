@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/journal_entry.dart';
 import '../models/chat_message.dart';
+import '../models/user_model.dart'; // **تمت الإضافة: استيراد UserModel**
 import '../services/auth_service.dart';
 import 'dart:io'; // لاستخدام File
 import 'package:path_provider/path_provider.dart'; // للحصول على مسار التخزين المؤقت
@@ -148,7 +149,42 @@ class FirestoreService {
     }
   }
 
-  // --- دوال جديدة للتعامل مع البيانات في SettingsScreen ---
+  // --- دوال إدارة بيانات المستخدم (User Profile Data) (تمت إعادتها إلى هنا) ---
+
+  // دالة لجلب ملف تعريف المستخدم الحالي
+  static Future<UserModel?> getUserProfile() async {
+    final userId = AuthService.currentUid; 
+    if (userId == null) {
+      print('Error: User not logged in to fetch profile.');
+      return null;
+    }
+
+    try {
+      final docSnapshot = await _db.collection('users').doc(userId).get();
+
+      if (docSnapshot.exists) {
+        return UserModel.fromFirestore(docSnapshot);
+      } else {
+        print('User profile not found for ID: $userId');
+        return null; 
+      }
+    } catch (e) {
+      print('Error getting user profile: $e');
+      return null; 
+    }
+  }
+
+  // دالة لحفظ أو تحديث ملف تعريف المستخدم
+  static Future<void> saveUserProfile(UserModel user) async {
+    try {
+      await _db.collection('users').doc(user.uid).set(user.toJson(), SetOptions(merge: true));
+    } catch (e) {
+      print('Error saving user profile: $e');
+      rethrow;
+    }
+  }
+
+  // --- دوال لتصدير وتنظيف البيانات (موجودة لديك أصلاً) ---
 
   // دالة لتصدير بيانات المستخدم
   static Future<String> exportUserData() async {
@@ -172,7 +208,6 @@ class FirestoreService {
           .where('userId', isEqualTo: userId)
           .orderBy('createdAt', descending: true)
           .get();
-      final chatSessionIds = chatSessionsSnapshot.docs.map((doc) => doc.id).toList();
 
       final List<Map<String, dynamic>> chatSessionsData = [];
       for (var sessionDoc in chatSessionsSnapshot.docs) {
@@ -185,7 +220,7 @@ class FirestoreService {
         final messagesData = messagesSnapshot.docs.map((doc) => doc.data()).toList();
         
         final sessionMap = sessionDoc.data();
-        sessionMap['messages'] = messagesData; // إضافة الرسائل ضمن بيانات الجلسة
+        sessionMap['messages'] = messagesData; 
         chatSessionsData.add(sessionMap);
       }
 
@@ -204,7 +239,7 @@ class FirestoreService {
       final file = File(filePath);
       await file.writeAsString(jsonString);
 
-      return filePath; // إرجاع مسار الملف الذي تم إنشاؤه
+      return filePath; 
     } catch (e) {
       print('Error exporting user data: $e');
       rethrow;

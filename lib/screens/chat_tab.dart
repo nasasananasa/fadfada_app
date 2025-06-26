@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/mood_selector_screen.dart';
 import '../screens/chat_screen.dart';
 import '../models/mood.dart';
-import '../services/firestore_service.dart';
+import '../services/firestore_service.dart'; // **تم التأكد من الاستيراد**
 
 class ChatTab extends StatefulWidget {
   const ChatTab({super.key});
@@ -84,13 +84,6 @@ class _ChatTabState extends State<ChatTab> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('الدردشات السابقة'),
-        // تم حذف زر الـ + من هنا
-        // actions: [
-        //   IconButton(
-        //     icon: const Icon(Icons.add_circle_outline),
-        //     onPressed: _startNewChatFlow,
-        //   ),
-        // ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -120,7 +113,6 @@ class _ChatTabState extends State<ChatTab> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
-                      // هذا الزر السفلي في حالة الشاشة الفارغة
                       ElevatedButton.icon(
                         onPressed: _startNewChatFlow,
                         icon: const Icon(Icons.add),
@@ -206,15 +198,14 @@ class _ChatTabState extends State<ChatTab> {
                     );
                   },
                 ),
-      // إضافة FloatingActionButton
       floatingActionButton: FloatingActionButton(
         onPressed: _startNewChatFlow,
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
-        shape: const CircleBorder(), // لجعل الزر دائرياً
-        child: const Icon(Icons.add, size: 30), // حجم أكبر قليلاً
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add, size: 30),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked, // وضعه في المنتصف بالأسفل
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

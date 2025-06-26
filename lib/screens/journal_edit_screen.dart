@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
+import 'package:uuid/uuid.dart'; // تأكد من استيراد Uuid
 import '../models/journal_entry.dart';
-import '../models/mood.dart';
-import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
-import '../widgets/custom_button.dart';
+import '../models/mood.dart'; // تأكد من استيراد Mood
+import '../services/firestore_service.dart'; // تأكد من استيراد FirestoreService
+import '../services/auth_service.dart'; // تأكد من استيراد AuthService
+import '../widgets/custom_button.dart'; // تأكد من استيراد CustomButton
 
 class JournalEditScreen extends StatefulWidget {
   final JournalEntry? entry;
@@ -37,7 +37,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
     if (widget.entry != null) {
       _titleController.text = widget.entry!.title;
       _contentController.text = widget.entry!.content;
-      _tags = List.from(widget.entry!.tags);
+      _tags = List.from(widget.entry!.tags ?? []); // Added null-check for tags
       _selectedMood = widget.entry!.moodId != null
           ? Mood.getMoodById(widget.entry!.moodId!)
           : null;
@@ -47,9 +47,15 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   void _setupChangeListeners() {
     _titleController.addListener(_onFieldChanged);
     _contentController.addListener(_onFieldChanged);
+    _tagController.addListener(_onFieldChanged); // Listen to tag changes as well
+    // يمكنك إضافة Listener لتغيير المزاج أيضاً
+    // إذا كنت تستخدم DropdownButton أو أي عنصر اختيار مزاج آخر يغير الـ _selectedMood
+    // فعليك استدعاء _onFieldChanged عند حدوث هذا التغيير.
   }
 
   void _onFieldChanged() {
+    // هذا المنطق بسيط، يجعل _hasChanges صحيحاً بمجرد أي تغيير.
+    // للمراجعة الأكثر دقة: يمكنك مقارنة القيم الحالية بالقيم الأصلية لـ widget.entry
     if (!_hasChanges) {
       setState(() {
         _hasChanges = true;
@@ -61,8 +67,19 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   Widget build(BuildContext context) {
     final isEditing = widget.entry != null;
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope( // استخدام PopScope لأنه أحدث من WillPopScope
+      canPop: false, // نتحكم بالخروج يدوياً بناءً على _onWillPop
+      onPopInvoked: (bool didPop) async {
+        if (didPop) {
+          // إذا كان زر العودة الافتراضي قد قام بالعملية، فلا تفعل شيئاً.
+          // هذا يضمن أن _onWillPop هو الذي يتحكم في السلوك.
+          return;
+        }
+        final bool shouldPop = await _onWillPop();
+        if (shouldPop) {
+          if (mounted) Navigator.of(context).pop(true); // نعود للشاشة السابقة
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           title: Text(isEditing ? 'تعديل الخاطرة' : 'خاطرة جديدة'),
@@ -133,12 +150,12 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
+                  // عند النقر على "إلغاء"، نعود للشاشة السابقة بدون حفظ
                   CustomButton(
-                    onPressed:
-                        _isLoading ? null : () => Navigator.pop(context),
+                    onPressed: _isLoading ? null : () => Navigator.pop(context, false), 
                     text: 'إلغاء',
                     backgroundColor: Colors.grey[600],
-                    width: 100,
+                    width: 100, // يمكن ضبط العرض حسب الحاجة
                   ),
                 ],
               ),
@@ -169,7 +186,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
               onTap: () {
                 setState(() {
                   _selectedMood = isSelected ? null : mood;
-                  _hasChanges = true;
+                  _hasChanges = true; // يتم تحديث الحالة عند تغيير المزاج
                 });
               },
               child: Column(
@@ -251,6 +268,9 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   }
 
   Widget _buildEntryInfo() {
+    // التأكد من أن widget.entry ليس null قبل الوصول إلى خصائصه
+    if (widget.entry == null) return const SizedBox.shrink();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -318,7 +338,9 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
 
     try {
       final userId = AuthService.currentUid;
-      if (userId == null) throw Exception('المستخدم غير مسجل الدخول');
+      if (userId == null) {
+        throw Exception('المستخدم غير مسجل الدخول');
+      }
 
       final entry = JournalEntry(
         id: widget.entry?.id ?? const Uuid().v4(),
@@ -346,7 +368,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context, true); 
       }
     } catch (e) {
       if (mounted) {
@@ -367,7 +389,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   }
 
   Future<bool> _onWillPop() async {
-    if (!_hasChanges) return true;
+    if (!_hasChanges) return true; 
 
     final result = await showDialog<bool>(
       context: context,
@@ -377,18 +399,18 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
             const Text('لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, false), 
             child: const Text('البقاء'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, true), 
             child: const Text('خروج'),
           ),
         ],
       ),
     );
 
-    return result ?? false;
+    return result ?? false; 
   }
 
   @override

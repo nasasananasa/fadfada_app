@@ -3,9 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:uuid/uuid.dart';
 import '../models/mood.dart';
 import '../models/chat_message.dart';
-import '../services/ai_service.dart';
-import '../services/firestore_service.dart';
-import '../services/auth_service.dart'; // تأكد من وجود هذا الاستيراد إذا كنت تستخدم AuthService
+import '../models/user_model.dart'; // **تمت الإضافة: استيراد UserModel**
+import '../services/ai_service.dart' as AIServiceAlias; // **تم التعديل: إضافة اسم مستعار لتجنب التضارب**
+import '../services/firestore_service.dart'; 
+import '../services/auth_service.dart'; 
 import '../widgets/chat_bubble.dart';
 import '../widgets/typing_indicator.dart';
 
@@ -33,9 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _isLoading = true;
   String? _currentSessionId;
-
-  // لا يوجد هنا _previousSessions أو أي منطق لعرض قائمة الجلسات السابقة
-  // هذه الشاشة مخصصة لعرض جلسة دردشة واحدة فقط.
+  UserModel? _currentUser; // **تمت الإضافة: متغير لتخزين بيانات المستخدم**
 
   @override
   void initState() {
@@ -45,13 +44,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initializeChat() async {
     try {
+      // **الخطوة الجديدة: جلب ملف تعريف المستخدم عند بدء الدردشة**
+      final userId = AuthService.currentUid;
+      if (userId != null) {
+        _currentUser = await FirestoreService.getUserProfile();
+        if (_currentUser == null) {
+          print('Warning: User profile not found for ID: $userId. AI responses may be less personalized.');
+        }
+      } else {
+        print('Warning: No user logged in. AI responses will not be personalized.');
+      }
+
       if (widget.sessionId != null) {
-        // إذا كان هناك sessionId موجود، قم بتحميل الرسائل لهذه الجلسة
         _currentSessionId = widget.sessionId;
         await _loadExistingChat();
       } else {
-        // إذا كانت جلسة جديدة (sessionId هو null)، قم بإنشاء جلسة جديدة.
-        // نتأكد من أننا حصلنا على sessionId صالح قبل المتابعة.
         final newSessionId = await FirestoreService.createChatSession(widget.selectedMood.id);
         if (newSessionId != null) {
           _currentSessionId = newSessionId;
@@ -134,25 +141,27 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _getWelcomeMessage() {
+    String userName = _currentUser?.displayName ?? 'صديقي'; 
+    
     switch (widget.selectedMood.id) {
       case 'happy':
-        return 'أهلاً بك! يسعدني أن أرى أنك تشعر بالسعادة اليوم. شاركني ما الذي يجعلك سعيداً!';
+        return 'أهلاً بك يا $userName! يسعدني أن أرى أنك تشعر بالسعادة اليوم. شاركني ما الذي يجعلك سعيداً!';
       case 'anxious':
-        return 'مرحباً، أفهم أنك تشعر بالقلق الآن. أنا هنا لأستمع إليك وأساعدك. خذ نفساً عميقاً وحدثني عما يقلقك.';
+        return 'مرحباً يا $userName، أفهم أنك تشعر بالقلق الآن. أنا هنا لأستمع إليك وأساعدك. خذ نفساً عميقاً وحدثني عما يقلقك.';
       case 'sad':
-        return 'أهلاً بك. أرى أنك تمر بوقت صعب، وأريدك أن تعلم أنني هنا لأستمع إليك. أحياناً يساعد الحديث عن مشاعرنا.';
+        return 'أهلاً بك يا $userName. أرى أنك تمر بوقت صعب، وأريدك أن تعلم أنني هنا لأستمع إليك. أحياناً يساعد الحديث عن مشاعرنا.';
       case 'stressed':
-        return 'مرحباً، أفهم أنك تشعر بالضغط الآن. دعنا نتحدث عما يضغط عليك ونجد طرقاً للتعامل معه معاً.';
+        return 'مرحباً يا $userName، أفهم أنك تشعر بالضغط الآن. دعنا نتحدث عما يضغط عليك ونجد طرقاً للتعامل معه معاً.';
       case 'confused':
-        return 'أهلاً بك. أرى أنك تشعر بالتشويش، وهذا أمر طبيعي أحياناً. دعنا نتحدث ونرتب الأفكار معاً.';
+        return 'أهلاً بك يا $userName. أرى أنك تشعر بالتشويش، وهذا أمر طبيعي أحياناً. دعنا نتحدث ونرتب الأفكار معاً.';
       case 'tired':
-        return 'مرحباً، أرى أنك تشعر بالتعب. من المهم أن نهتم بأنفسنا. حدثني عما استنزف طاقتك.';
+        return 'مرحباً يا $userName، أرى أنك تشعر بالتعب. من المهم أن نهتم بأنفسنا. حدثني عما استنزف طاقتك.';
       case 'angry':
-        return 'أهلاً بك. أفهم أنك تشعر بالغضب الآن. الغضب مشاعر طبيعية، دعنا نتحدث عما يزعجك.';
+        return 'أهلاً بك يا $userName. أفهم أنك تشعر بالغضب الآن. الغضب مشاعر طبيعية، دعنا نتحدث عما يزعجك.';
       case 'peaceful':
-        return 'مرحباً! ما أجمل أن تشعر بالسلام الداخلي. شاركني كيف وصلت لهذا الشعور الرائع.';
+        return 'مرحباً يا $userName! ما أجمل أن تشعر بالسلام الداخلي. شاركني كيف وصلت لهذا الشعور الرائع.';
       default:
-        return 'أهلاً بك، صديقي! أنا هنا لأستمع إليك ولأساعدك. حدثني عما تشعر به.';
+        return 'أهلاً بك يا $userName! أنا هنا لأستمع إليك ولأساعدك. حدثني عما تشعر به.';
     }
   }
 
@@ -191,10 +200,12 @@ class _ChatScreenState extends State<ChatScreen> {
     await FirestoreService.addChatMessage(userMessage);
 
     try {
-      final aiResponse = await AIService.sendMessage(
+      // استخدام AIService من الاسم المستعار لتجنب التضارب
+      final aiResponse = await AIServiceAlias.AIService.sendMessage( 
         messageText,
         widget.selectedMood,
         previousMessages: _messages.reversed.take(10).toList().reversed.toList(),
+        currentUser: _currentUser, 
       );
 
       final aiMessage = ChatMessage(
@@ -249,7 +260,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showSuggestions() {
-    final suggestions = AIService.getConversationStarters(widget.selectedMood);
+    // استخدام AIService من الاسم المستعار
+    final suggestions = AIServiceAlias.AIService.getConversationStarters(widget.selectedMood);
 
     showModalBottomSheet(
       context: context,

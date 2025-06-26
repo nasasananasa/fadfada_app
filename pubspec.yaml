@@ -64,7 +64,8 @@ dependencies:
   uuid: ^4.5.1
   url_launcher: ^6.3.1
   image_picker: ^1.1.2
-  path_provider: ^2.1.0 # تم إضافة هذه الحزمة
+  path_provider: ^2.1.0 
+  share_plus: ^7.0.2  # **تمت الإضافة هنا**
   
   # Icons
   cupertino_icons: ^1.0.8
