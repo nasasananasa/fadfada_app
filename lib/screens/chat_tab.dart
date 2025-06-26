@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/mood_selector_screen.dart';
 import '../screens/chat_screen.dart';
 import '../models/mood.dart';
-import '../services/firestore_service.dart'; // **تم التأكد من الاستيراد**
+import '../services/firestore_service.dart';
 
 class ChatTab extends StatefulWidget {
   const ChatTab({super.key});
@@ -113,6 +113,7 @@ class _ChatTabState extends State<ChatTab> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
+                      // هذا الزر السفلي في حالة الشاشة الفارغة
                       ElevatedButton.icon(
                         onPressed: _startNewChatFlow,
                         icon: const Icon(Icons.add),
@@ -204,6 +205,7 @@ class _ChatTabState extends State<ChatTab> {
         foregroundColor: Colors.white,
         shape: const CircleBorder(),
         child: const Icon(Icons.add, size: 30),
+        heroTag: 'chat_tab_fab', // **تمت الإضافة: heroTag فريد**
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );

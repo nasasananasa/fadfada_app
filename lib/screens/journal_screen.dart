@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:uuid/uuid.dart';
+import 'package:uuid/uuid.dart'; 
 import '../models/journal_entry.dart';
 import '../models/mood.dart'; 
-import '../services/firestore_service.dart'; // **تأكد من الاستيراد**
-import '../services/auth_service.dart'; // **تأكد من الاستيراد**
+import '../services/firestore_service.dart'; 
+import '../services/auth_service.dart'; 
 import '../widgets/custom_button.dart';
 import '../widgets/journal_entry_card.dart';
 import 'journal_edit_screen.dart';
-import 'dart:async';
+import 'dart:async'; 
 
 class JournalScreen extends StatefulWidget {
   const JournalScreen({super.key});
@@ -130,6 +130,7 @@ class _JournalScreenState extends State<JournalScreen> {
         label: const Text('خاطرة جديدة'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
+        heroTag: 'journal_fab', // **تمت الإضافة: heroTag فريد**
       ),
     );
   }
@@ -225,7 +226,7 @@ class _JournalScreenState extends State<JournalScreen> {
       ),
     );
     if (result == true) {
-      _loadEntries(); // Reload entries after creating a new one
+      _loadEntries(); 
     }
   }
 
@@ -261,7 +262,7 @@ class _JournalScreenState extends State<JournalScreen> {
                     ),
                   );
                 }
-                _loadEntries(); // بعد الحذف، أعد تحميل اليوميات لتحديث القائمة
+                _loadEntries(); 
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

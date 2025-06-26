@@ -3,40 +3,32 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/mood.dart';
 import '../models/chat_message.dart';
-import '../models/user_model.dart'; // **تمت الإضافة: استيراد UserModel**
+import '../models/user_model.dart'; 
 
 class AIService {
-  // عنوان URL الأساسي لـ OpenAI API
   static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
 
-  // إرسال رسالة وتلقي الرد من AI
   static Future<String> sendMessage(
     String message,
     Mood selectedMood,
     {List<ChatMessage>? previousMessages,
-    UserModel? currentUser, // **تمت الإضافة: لاستقبال UserModel**
+    UserModel? currentUser, 
     }
   ) async {
     try {
-      // بناء prompt النظام (system prompt) بناءً على الحالة المزاجية ومعلومات المستخدم
-      final systemPrompt = _buildSystemPrompt(selectedMood, currentUser); // **تم التعديل: تمرير currentUser**
+      final systemPrompt = _buildSystemPrompt(selectedMood, currentUser); 
 
-      // بناء تاريخ الرسائل الذي سيُرسل إلى API
       final messages = _buildMessageHistory(systemPrompt, message, previousMessages);
 
-      // تفعيل كود API الحقيقي وإرسال الطلب إلى OpenAI
       return await _sendToOpenAI(messages);
       
     } catch (e) {
-      // طباعة الخطأ والتعامل معه بتقديم رسالة خطأ ودودة للمستخدم
       print('AI Service Error: $e');
       return _getErrorResponse(selectedMood);
     }
   }
 
-  // بناء prompt النظام (system prompt) حسب الحالة النفسية ومعلومات المستخدم
-  static String _buildSystemPrompt(Mood mood, UserModel? user) { // **تم التعديل: يجب أن تستقبل user هنا**
-    // تعريف شخصية الذكاء الاصطناعي كمرشد نفسي افتراضي داعم
+  static String _buildSystemPrompt(Mood mood, UserModel? user) { 
     final String aiPersona = '''
 أنت "فضفضة"، مرشد نفسي افتراضي وأخصائي نفسي داعم.
 مهمتك هي الاستماع بتعاطف عميق، وتقديم الدعم العاطفي، ومساعدة المستخدم على استكشاف مشاعره وأفكاره وتحدياته الشخصية.
@@ -49,12 +41,15 @@ class AIService {
 - حافظ على نبرة ودودة، دافئة، مشجعة، وغير حكمية.
 - اجعل ردودك موجزة ومباشرة.
 - لا تكرر المعلومات التي يعرفها المستخدم عن نفسه بشكل مبالغ فيه، بل استخدمها لتعميق الفهم.
+
+**تعليمات خاصة بالتعامل مع المعلومات الشخصية:**
+إذا سألك المستخدم عن حفظ معلومات شخصية جديدة (مثل العمر، الحالة الاجتماعية، التحديات، إلخ)، لا تقل أنك لا تستطيع الحفظ. بدلاً من ذلك، قل شيئًا مثل:
+"أنا (فضفضة، الذكاء الاصطناعي) لا أقوم بحفظ التفاصيل الشخصية مباشرةً لأسباب الخصوصية، ولكن تطبيق فضفضة مصمم ليتذكر معلوماتك الأساسية التي توافق عليها. يمكنك تحديث معلوماتك في قسم 'الملف الشخصي' ضمن 'الإعدادات' في التطبيق. هذا يساعدني على فهمك بشكل أفضل وتقديم ردود مخصصة لك."
 ''';
 
-    // إضافة معلومات المستخدم إلى الـ System Prompt
     String userContext = '';
     if (user != null) {
-      userContext += '\n**معلومات عن المستخدم:**\n';
+      userContext += '\n**معلومات عن المستخدم (لتخصيص الردود):**\n';
       if (user.displayName != null && user.displayName!.isNotEmpty) {
         userContext += '- الاسم: ${user.displayName}\n';
       }
@@ -85,17 +80,13 @@ class AIService {
       userContext += 'استخدم هذه المعلومات لتخصيص ردودك.';
     }
 
-    // إضافة تعليمات خاصة بالحالة النفسية المحددة
-    // **التعديل: تمرير user إلى _getMoodSpecificPrompt()**
     final moodSpecificPrompt = _getMoodSpecificPrompt(mood, user); 
     
-    // دمج شخصية AI، معلومات المستخدم، وتعليمات المزاج
     return '$aiPersona$userContext\n\n$moodSpecificPrompt';
   }
 
-  // **تم التعديل: يجب أن تستقبل _getMoodSpecificPrompt الآن UserModel أيضاً**
   static String _getMoodSpecificPrompt(Mood mood, UserModel? user) { 
-    String userDisplayName = user?.displayName ?? "المستخدم"; // استخدام اسم المستخدم إذا توفر
+    String userDisplayName = user?.displayName ?? "المستخدم"; 
     
     switch (mood.id) {
       case 'happy':
@@ -119,7 +110,6 @@ class AIService {
     }
   }
 
-  // بناء تاريخ الرسائل (يتضمن System Prompt والرسائل السابقة والحالية)
   static List<Map<String, String>> _buildMessageHistory(
     String systemPrompt,
     String currentMessage,
@@ -127,17 +117,12 @@ class AIService {
   ) {
     final messages = <Map<String, String>>[];
     
-    // 1. إضافة prompt النظام في البداية لتحديد شخصية AI
     messages.add({
       'role': 'system',
       'content': systemPrompt,
     });
 
-    // 2. إضافة الرسائل السابقة (من المستخدم و AI) للحفاظ على السياق
-    // نأخذ آخر 10 رسائل فقط (أو عدد أقل إذا كانت المحادثة أقصر) لتجنب تجاوز حد الـ tokens
     if (previousMessages != null && previousMessages.isNotEmpty) {
-      // هذا الجزء تم تعديله في chat_screen، ولكن هنا نضمن أنه إذا تم تمرير القائمة كاملة
-      // فإننا نأخذ منها آخر 10 رسائل فقط قبل إضافتها إلى الـ messages
       final effectivePreviousMessages = previousMessages.length > 10 
           ? previousMessages.sublist(previousMessages.length - 10)
           : previousMessages;
@@ -150,7 +135,6 @@ class AIService {
       }
     }
 
-    // 3. إضافة الرسالة الحالية من المستخدم
     messages.add({
       'role': 'user',
       'content': currentMessage,
@@ -159,18 +143,14 @@ class AIService {
     return messages;
   }
 
-  // دالة الاستجابة المحلية (للاختبار) - معطلة الآن
   static Future<String> _getLocalAIResponse(String message, Mood mood) async {
-    // محاكاة تأخير API
     await Future.delayed(const Duration(milliseconds: 1500));
 
-    // ردود تجريبية حسب الحالة النفسية والرسالة
     final responses = _getTestResponses(mood, message);
     responses.shuffle();
     return responses.first;
   }
 
-  // ردود تجريبية للاختبار (تُستخدم فقط من _getLocalAIResponse)
   static List<String> _getTestResponses(Mood mood, String message) {
     final messageWords = message.toLowerCase();
     
@@ -240,61 +220,52 @@ class AIService {
     }
   }
 
-  // رسالة خطأ ودودة ليتم عرضها للمستخدم في حالة فشل الاتصال بالـ AI
   static String _getErrorResponse(Mood mood) {
     return 'أعتذر، واجهت مشكلة تقنية أثناء محاولة الاتصال. لكن أريدك أن تعلم أنني هنا لأساعدك. هل يمكنك إعادة المحاولة؟';
   }
 
-  // إرسال الطلب إلى OpenAI API الحقيقي
   static Future<String> _sendToOpenAI(List<Map<String, String>> messages) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY']; // جلب مفتاح API من ملف .env
+    final apiKey = dotenv.env['OPENAI_API_KEY']; 
     if (apiKey == null || apiKey.isEmpty) {
-      // إلقاء استثناء إذا كان المفتاح غير موجود أو فارغ
       throw Exception('OpenAI API Key is not configured in .env file.');
     }
 
     try {
       final response = await http.post(
-        Uri.parse(_baseUrl), // استخدام عنوان الـ API الثابت
+        Uri.parse(_baseUrl), 
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey', // تمرير المفتاح في Header
+          'Authorization': 'Bearer $apiKey', 
         },
         body: jsonEncode({
-          'model': 'gpt-3.5-turbo', // اسم النموذج المستخدم
-          'messages': messages, // تاريخ المحادثة بالكامل
-          'max_tokens': 500, // الحد الأقصى لعدد التوكنات في الرد
-          'temperature': 0.7, // درجة الحرارة للتحكم في مدى عشوائية الرد
+          'model': 'gpt-3.5-turbo', 
+          'messages': messages, 
+          'max_tokens': 500, 
+          'temperature': 0.7, 
         }),
       );
 
       if (response.statusCode == 200) {
-        // إذا كان الرد ناجحاً (HTTP 200 OK)
         final data = jsonDecode(response.body);
         return data['choices'][0]['message']['content'].toString().trim();
       } else {
-        // إذا كان هناك خطأ في رد الـ API
         print('Error response from OpenAI: ${response.statusCode}');
         print('Response body: ${response.body}');
-        // إلقاء استثناء مع رسالة خطأ توضح المشكلة
         throw Exception(
             'فشل في الاتصال بخدمة الذكاء الصناعي. الكود: ${response.statusCode}، الرسالة: ${response.body}');
       }
     } catch (e) {
-      // التعامل مع الأخطاء التي قد تحدث أثناء عملية إرسال الطلب (مثل مشاكل الشبكة)
       print('Exception during API call to OpenAI: $e');
-      rethrow; // إعادة إلقاء الاستثناء للتعامل معه في الطبقة الأعلى (ChatScreen)
+      rethrow; 
     }
   }
 
-  // دالة لتنظيف تاريخ المحادثة المخزن (إذا كان هناك تاريخ محلي مخزن)
   static void clearConversationHistory() {
     // هذا المتغير كان لتخزين الـ history محلياً، ولكنه غير مستخدم حالياً
     // لأن الـ history يتم تمريره مع كل طلب API.
     // _conversationHistory.clear();
   }
 
-  // الحصول على اقتراحات للرسائل الأولى بناءً على الحالة المزاجية
   static List<String> getConversationStarters(Mood mood) {
     switch (mood.id) {
       case 'happy':
@@ -321,7 +292,7 @@ class AIService {
           'لدي الكثير من الأمور المقلقة',
           'أحتاج مساعدة في التعامل مع الضغوط',
         ];
-      default: // تشمل confused, tired, angry, peaceful وأي مزاج غير معرف
+      default: 
         return [
           'أريد أن أتحدث عن شعوري',
           'كيف يمكنني التعامل مع هذا الوضع؟',
