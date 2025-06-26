@@ -149,11 +149,11 @@ class FirestoreService {
     }
   }
 
-  // --- دوال إدارة بيانات المستخدم (User Profile Data) (تمت إعادتها إلى هنا) ---
+  // --- دوال إدارة بيانات المستخدم (User Profile Data) ---
 
   // دالة لجلب ملف تعريف المستخدم الحالي
   static Future<UserModel?> getUserProfile() async {
-    final userId = AuthService.currentUid; 
+    final userId = AuthService.currentUid;
     if (userId == null) {
       print('Error: User not logged in to fetch profile.');
       return null;
@@ -166,25 +166,42 @@ class FirestoreService {
         return UserModel.fromFirestore(docSnapshot);
       } else {
         print('User profile not found for ID: $userId');
-        return null; 
+        return null;
       }
     } catch (e) {
       print('Error getting user profile: $e');
-      return null; 
+      return null;
     }
   }
 
-  // دالة لحفظ أو تحديث ملف تعريف المستخدم
+  // دالة لحفظ أو تحديث ملف تعريف المستخدم بالكامل
   static Future<void> saveUserProfile(UserModel user) async {
     try {
       await _db.collection('users').doc(user.uid).set(user.toJson(), SetOptions(merge: true));
+      print('User profile for ${user.uid} saved/updated successfully.');
     } catch (e) {
       print('Error saving user profile: $e');
       rethrow;
     }
   }
 
-  // --- دوال لتصدير وتنظيف البيانات (موجودة لديك أصلاً) ---
+  /// دالة جديدة لتحديث حقل معين في وثيقة ملف تعريف المستخدم
+  /// [userId] هو معرّف المستخدم (ID)
+  /// [fieldName] هو اسم الحقل الذي سيتم تحديثه (مثال: 'age', 'name')
+  /// [value] هي القيمة الجديدة التي ستوضع في هذا الحقل
+  static Future<void> updateUserField(String userId, String fieldName, dynamic value) async {
+    try {
+      await _db.collection('users').doc(userId).update({
+        fieldName: value,
+      });
+      print('تم تحديث حقل "$fieldName" للمستخدم "$userId" بنجاح بالقيمة: $value');
+    } catch (e) {
+      print('خطأ في تحديث حقل "$fieldName" للمستخدم "$userId": $e');
+      rethrow; // إعادة رمي الخطأ ليتم التعامل معه في مكان آخر إذا لزم الأمر
+    }
+  }
+
+  // --- دوال لتصدير وتنظيف البيانات ---
 
   // دالة لتصدير بيانات المستخدم
   static Future<String> exportUserData() async {

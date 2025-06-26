@@ -3,17 +3,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:uuid/uuid.dart';
 import '../models/mood.dart';
 import '../models/chat_message.dart';
-import '../models/user_model.dart'; // **تمت الإضافة: استيراد UserModel**
-import '../services/ai_service.dart' as AIServiceAlias; // **تم التعديل: إضافة اسم مستعار لتجنب التضارب**
-import '../services/firestore_service.dart'; 
-import '../services/auth_service.dart'; 
+import '../models/user_model.dart';
+import '../services/ai_service.dart';
+import '../services/firestore_service.dart';
+import '../services/auth_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
   final Mood selectedMood;
   final String? sessionId;
-  final VoidCallback? onSessionEnd; // Callback to notify parent (ChatTab)
+  final VoidCallback? onSessionEnd;
 
   const ChatScreen({
     super.key,
@@ -34,7 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _isLoading = true;
   String? _currentSessionId;
-  UserModel? _currentUser; // **تمت الإضافة: متغير لتخزين بيانات المستخدم**
+  UserModel? _currentUser;
 
   @override
   void initState() {
@@ -44,7 +44,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initializeChat() async {
     try {
-      // **الخطوة الجديدة: جلب ملف تعريف المستخدم عند بدء الدردشة**
       final userId = AuthService.currentUid;
       if (userId != null) {
         _currentUser = await FirestoreService.getUserProfile();
@@ -70,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('فشل في بدء جلسة دردشة جديدة. قد لا يتم حفظ الرسائل.'),
+                content: Text('فشل في بدء جلسة دردشة جديدة. قد لا يتم حفظ الرسائل.'), // Arabic text
                 backgroundColor: Colors.orange,
               ),
             );
@@ -84,7 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ في تهيئة الدردشة: $e. قد لا يتم حفظ الرسائل.'),
+            content: Text('حدث خطأ في تهيئة الدردشة: $e. قد لا يتم حفظ الرسائل.'), // Arabic text
             backgroundColor: Colors.red,
           ),
         );
@@ -114,7 +113,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ في تحميل الرسائل: $e'),
+            content: Text('حدث خطأ في تحميل الرسائل: $e'), // Arabic text
             backgroundColor: Colors.red,
           ),
         );
@@ -141,27 +140,27 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _getWelcomeMessage() {
-    String userName = _currentUser?.displayName ?? 'صديقي'; 
+    String userName = _currentUser?.displayName ?? 'صديقي'; // Arabic text
     
     switch (widget.selectedMood.id) {
       case 'happy':
-        return 'أهلاً بك يا $userName! يسعدني أن أرى أنك تشعر بالسعادة اليوم. شاركني ما الذي يجعلك سعيداً!';
+        return 'أهلاً بك يا $userName! يسعدني أن أرى أنك تشعر بالسعادة اليوم. شاركني ما الذي يجعلك سعيداً!'; // Arabic text
       case 'anxious':
-        return 'مرحباً يا $userName، أفهم أنك تشعر بالقلق الآن. أنا هنا لأستمع إليك وأساعدك. خذ نفساً عميقاً وحدثني عما يقلقك.';
+        return 'مرحباً يا $userName، أفهم أنك تشعر بالقلق الآن. أنا هنا لأستمع إليك وأساعدك. خذ نفساً عميقاً وحدثني عما يقلقك.'; // Arabic text
       case 'sad':
-        return 'أهلاً بك يا $userName. أرى أنك تمر بوقت صعب، وأريدك أن تعلم أنني هنا لأستمع إليك. أحياناً يساعد الحديث عن مشاعرنا.';
+        return 'أهلاً بك يا $userName. أرى أنك تمر بوقت صعب، وأريدك أن تعلم أنني هنا لأستمع إليك. أحياناً يساعد الحديث عن مشاعرنا.'; // Arabic text
       case 'stressed':
-        return 'مرحباً يا $userName، أفهم أنك تشعر بالضغط الآن. دعنا نتحدث عما يضغط عليك ونجد طرقاً للتعامل معه معاً.';
+        return 'مرحباً يا $userName، أفهم أنك تشعر بالضغط الآن. دعنا نتحدث عما يضغط عليك ونجد طرقاً للتعامل معه معاً.'; // Arabic text
       case 'confused':
-        return 'أهلاً بك يا $userName. أرى أنك تشعر بالتشويش، وهذا أمر طبيعي أحياناً. دعنا نتحدث ونرتب الأفكار معاً.';
+        return 'أهلاً بك يا $userName. أرى أنك تشعر بالتشويش، وهذا أمر طبيعي أحياناً. دعنا نتحدث ونرتب الأفكار معاً.'; // Arabic text
       case 'tired':
-        return 'مرحباً يا $userName، أرى أنك تشعر بالتعب. من المهم أن نهتم بأنفسنا. حدثني عما استنزف طاقتك.';
+        return 'مرحباً يا $userName، أرى أنك تشعر بالتعب. من المهم أن نهتم بأنفسنا. حدثني عما استنزف طاقتك.'; // Arabic text
       case 'angry':
-        return 'أهلاً بك يا $userName. أفهم أنك تشعر بالغضب الآن. الغضب مشاعر طبيعية، دعنا نتحدث عما يزعجك.';
+        return 'أهلاً بك يا $userName. أفهم أنك تشعر بالغضب الآن. الغضب مشاعر طبيعية، دعنا نتحدث عما يزعجك.'; // Arabic text
       case 'peaceful':
-        return 'مرحباً يا $userName! ما أجمل أن تشعر بالسلام الداخلي. شاركني كيف وصلت لهذا الشعور الرائع.';
+        return 'مرحباً يا $userName! ما أجمل أن تشعر بالسلام الداخلي. شاركني كيف وصلت لهذا الشعور الرائع.'; // Arabic text
       default:
-        return 'أهلاً بك يا $userName! أنا هنا لأستمع إليك ولأساعدك. حدثني عما تشعر به.';
+        return 'أهلاً بك يا $userName! أنا هنا لأستمع إليك ولأساعدك. حدثني عما تشعر به.'; // Arabic text
     }
   }
 
@@ -173,7 +172,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('لا يمكن إرسال الرسالة: لا توجد جلسة دردشة نشطة لحفظ الرسائل.'),
+            content: Text('لا يمكن إرسال الرسالة: لا توجد جلسة دردشة نشطة لحفظ الرسائل.'), // Arabic text
             backgroundColor: Colors.orange,
           ),
         );
@@ -200,12 +199,11 @@ class _ChatScreenState extends State<ChatScreen> {
     await FirestoreService.addChatMessage(userMessage);
 
     try {
-      // استخدام AIService من الاسم المستعار لتجنب التضارب
-      final aiResponse = await AIServiceAlias.AIService.sendMessage( 
+      final aiResponse = await AIService.sendMessage(
         messageText,
         widget.selectedMood,
         previousMessages: _messages.reversed.take(10).toList().reversed.toList(),
-        currentUser: _currentUser, 
+        currentUser: _currentUser,
       );
 
       final aiMessage = ChatMessage(
@@ -232,7 +230,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ في إرسال الرسالة أو تلقي رد الذكاء الاصطناعي: $e'),
+            content: Text('حدث خطأ في إرسال الرسالة أو تلقي رد الذكاء الاصطناعي: $e'), // Arabic text
             backgroundColor: Colors.red,
           ),
         );
@@ -260,8 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showSuggestions() {
-    // استخدام AIService من الاسم المستعار
-    final suggestions = AIServiceAlias.AIService.getConversationStarters(widget.selectedMood);
+    final suggestions = AIService.getConversationStarters(widget.selectedMood);
 
     showModalBottomSheet(
       context: context,
@@ -272,7 +269,7 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'اقتراحات للحديث',
+              'اقتراحات للحديث', // Arabic text
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
@@ -304,12 +301,12 @@ class _ChatScreenState extends State<ChatScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('مسح المحادثة'),
-        content: const Text('هل أنت متأكد من أنك تريد مسح هذه المحادثة؟'),
+        title: const Text('مسح المحادثة'), // Arabic text
+        content: const Text('هل أنت متأكد من أنك تريد مسح هذه المحادثة؟'), // Arabic text
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
+            child: const Text('إلغاء'), // Arabic text
           ),
           TextButton(
             onPressed: () async {
@@ -320,28 +317,72 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('تم مسح المحادثة بنجاح'),
+                      content: Text('تم مسح المحادثة بنجاح'), // Arabic text
                       backgroundColor: Colors.green,
                     ),
                   );
                 }
               } else {
-                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('لا توجد جلسة لحذفها.'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('لا توجد جلسة لحذفها.'), // Arabic text
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
                 }
-              }
               _handleSessionEndAndPop();
             },
-            child: const Text('مسح'),
+            child: const Text('مسح'), // Arabic text
           ),
         ],
       ),
     );
+  }
+
+  /// Temporary test function to save age
+  Future<void> _saveTestAge() async {
+    final String? userId = AuthService.currentUid;
+    if (userId == null) {
+      print("Not logged in, cannot save test age.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('الرجاء تسجيل الدخول أولاً لحفظ البيانات التجريبية.'), // Arabic text
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      await FirestoreService.updateUserField(userId, 'age', 30);
+      print("Test age saved successfully!");
+      if (mounted) {
+        setState(() {
+          _messages.add(ChatMessage(
+            id: const Uuid().v4(),
+            content: 'تم حفظ عمرك التجريبي (30 سنة) في مفكرتي! (للاختبار فقط)', // Arabic text
+            timestamp: DateTime.now(),
+            isFromUser: false,
+            sessionId: _currentSessionId,
+          ));
+        });
+        _currentUser = await FirestoreService.getUserProfile();
+      }
+    } catch (e) {
+      print("An error occurred while saving test age: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ أثناء محاولة حفظ العمر التجريبي: $e'), // Arabic text
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -354,21 +395,26 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('الدردشة مع ${widget.selectedMood.arabicName}'),
+          title: Text('الدردشة مع ${widget.selectedMood.arabicName}'), // Arabic text
           actions: [
             IconButton(
+              icon: const Icon(Icons.baby_changing_station),
+              onPressed: _saveTestAge,
+              tooltip: 'حفظ عمر تجريبي (للاختبار)', // Arabic text
+            ),
+            IconButton(
               icon: const Icon(Icons.refresh),
-              tooltip: 'بدء محادثة جديدة',
+              tooltip: 'بدء محادثة جديدة', // Arabic text
               onPressed: _startNewChat,
             ),
             IconButton(
               icon: const Icon(Icons.delete_forever),
-              tooltip: 'مسح المحادثة',
+              tooltip: 'مسح المحادثة', // Arabic text
               onPressed: _clearChat,
             ),
             IconButton(
               icon: const Icon(Icons.lightbulb_outline),
-              tooltip: 'اقتراحات للحديث',
+              tooltip: 'اقتراحات للحديث', // Arabic text
               onPressed: _showSuggestions,
             ),
           ],
@@ -381,7 +427,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   : _messages.isEmpty && !_isTyping
                       ? Center(
                           child: Text(
-                            'ابدأ محادثتك الأولى مع ${widget.selectedMood.arabicName}!',
+                            'ابدأ محادثتك الأولى مع ${widget.selectedMood.arabicName}!', // Arabic text
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                   color: Colors.grey[600],
                                 ),
@@ -428,7 +474,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: TextField(
                       controller: _messageController,
                       decoration: InputDecoration(
-                        hintText: 'اكتب رسالتك هنا...',
+                        hintText: 'اكتب رسالتك هنا...', // Arabic text
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,

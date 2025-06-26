@@ -3,21 +3,28 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class UserModel {
   final String uid;
   final String? email;
-  final String? displayName;
+  final String? displayName; // الاسم المعروض (سيتم حفظ الاسم المستخلص هنا)
   final String? photoURL;
   final DateTime createdAt;
   final DateTime? lastLoginAt;
   final Map<String, dynamic> preferences;
   final bool isFirstTime;
-  // --- معلومات الملف الشخصي المخصصة ---
-  final String? ageGroup;
+
+  // --- معلومات الملف الشخصي المخصصة (محدثة وشاملة) ---
+  final int? age; // العمر (رقم وليس مجموعة عمرية)
   final String? maritalStatus;
-  final List<String>? mainChallenges; // قائمة بالتحديات
-  final String? relationshipDynamics; // ملخص ديناميكيات العلاقات
-  final String? birthplace;
-  final String? currentLocation;
+  final String? job; // المهنة/العمل
+  final List<String>? lifeChallenges; // التحديات الرئيسية في الحياة/العمل
+  final List<String>? importantRelationships; // الأشخاص المقربون والعلاقات المهمة (أفراد العائلة والأصدقاء)
+  final String? birthPlace; // مكان الولادة
+  final String? currentResidence; // مكان الإقامة
+  final List<String>? dreams; // الأحلام والطموحات
+  final List<String>? impactfulExperiences; // تجارب لها أثر في الحياة
+  final bool? seesTherapist; // هل يراجع طبيب نفسي أو مرشد نفسي
+  final bool? takesMedication; // هل يتناول أدوية نفسية
   final Map<String, dynamic>? personalityTestResults; // لحفظ نتائج الاختبارات المختلفة
-  final List<Map<String, dynamic>>? importantPeople; // قائمة بالأشخاص المهمين
+  final List<String>? preferencesList; // قائمة بالتفضيلات (مثلاً: أنواع الموسيقى، الأفلام)
+  final List<String>? hobbies; // الهوايات
 
   UserModel({
     required this.uid,
@@ -29,14 +36,20 @@ class UserModel {
     this.preferences = const {},
     this.isFirstTime = true,
     // --- إضافة معلومات الملف الشخصي المخصصة هنا ---
-    this.ageGroup,
+    this.age,
     this.maritalStatus,
-    this.mainChallenges,
-    this.relationshipDynamics,
-    this.birthplace,
-    this.currentLocation,
+    this.job,
+    this.lifeChallenges,
+    this.importantRelationships,
+    this.birthPlace,
+    this.currentResidence,
+    this.dreams,
+    this.impactfulExperiences,
+    this.seesTherapist,
+    this.takesMedication,
     this.personalityTestResults,
-    this.importantPeople,
+    this.preferencesList,
+    this.hobbies,
   });
 
   Map<String, dynamic> toJson() {
@@ -46,20 +59,26 @@ class UserModel {
       'displayName': displayName,
       'photoURL': photoURL,
       'createdAt': Timestamp.fromDate(createdAt),
-      'lastLoginAt': lastLoginAt != null 
-          ? Timestamp.fromDate(lastLoginAt!) 
+      'lastLoginAt': lastLoginAt != null
+          ? Timestamp.fromDate(lastLoginAt!)
           : null,
       'preferences': preferences,
       'isFirstTime': isFirstTime,
       // --- إضافة معلومات الملف الشخصي المخصصة للـ JSON هنا ---
-      'ageGroup': ageGroup,
+      'age': age,
       'maritalStatus': maritalStatus,
-      'mainChallenges': mainChallenges, 
-      'relationshipDynamics': relationshipDynamics,
-      'birthplace': birthplace,
-      'currentLocation': currentLocation,
-      'personalityTestResults': personalityTestResults, 
-      'importantPeople': importantPeople, 
+      'job': job,
+      'lifeChallenges': lifeChallenges,
+      'importantRelationships': importantRelationships,
+      'birthPlace': birthPlace,
+      'currentResidence': currentResidence,
+      'dreams': dreams,
+      'impactfulExperiences': impactfulExperiences,
+      'seesTherapist': seesTherapist,
+      'takesMedication': takesMedication,
+      'personalityTestResults': personalityTestResults,
+      'preferencesList': preferencesList,
+      'hobbies': hobbies,
     };
   }
 
@@ -74,14 +93,20 @@ class UserModel {
       preferences: Map<String, dynamic>.from(json['preferences'] ?? {}),
       isFirstTime: json['isFirstTime'] ?? true,
       // --- إضافة معلومات الملف الشخصي المخصصة هنا ---
-      ageGroup: json['ageGroup'] as String?,
+      age: json['age'] as int?,
       maritalStatus: json['maritalStatus'] as String?,
-      mainChallenges: (json['mainChallenges'] as List<dynamic>?)?.map((e) => e as String).toList(),
-      relationshipDynamics: json['relationshipDynamics'] as String?,
-      birthplace: json['birthplace'] as String?,
-      currentLocation: json['currentLocation'] as String?,
+      job: json['job'] as String?,
+      lifeChallenges: (json['lifeChallenges'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      importantRelationships: (json['importantRelationships'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      birthPlace: json['birthPlace'] as String?,
+      currentResidence: json['currentResidence'] as String?,
+      dreams: (json['dreams'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      impactfulExperiences: (json['impactfulExperiences'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      seesTherapist: json['seesTherapist'] as bool?,
+      takesMedication: json['takesMedication'] as bool?,
       personalityTestResults: json['personalityTestResults'] as Map<String, dynamic>?,
-      importantPeople: (json['importantPeople'] as List<dynamic>?)?.map((e) => e as Map<String, dynamic>).toList(),
+      preferencesList: (json['preferencesList'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      hobbies: (json['hobbies'] as List<dynamic>?)?.map((e) => e as String).toList(),
     );
   }
 
@@ -103,14 +128,20 @@ class UserModel {
     Map<String, dynamic>? preferences,
     bool? isFirstTime,
     // --- إضافة معلومات الملف الشخصي المخصصة هنا ---
-    String? ageGroup,
+    int? age,
     String? maritalStatus,
-    List<String>? mainChallenges,
-    String? relationshipDynamics,
-    String? birthplace,
-    String? currentLocation,
+    String? job,
+    List<String>? lifeChallenges,
+    List<String>? importantRelationships,
+    String? birthPlace,
+    String? currentResidence,
+    List<String>? dreams,
+    List<String>? impactfulExperiences,
+    bool? seesTherapist,
+    bool? takesMedication,
     Map<String, dynamic>? personalityTestResults,
-    List<Map<String, dynamic>>? importantPeople,
+    List<String>? preferencesList,
+    List<String>? hobbies,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -122,14 +153,20 @@ class UserModel {
       preferences: preferences ?? this.preferences,
       isFirstTime: isFirstTime ?? this.isFirstTime,
       // --- تمرير المعلومات المخصصة في البناء ---
-      ageGroup: ageGroup ?? this.ageGroup,
+      age: age ?? this.age,
       maritalStatus: maritalStatus ?? this.maritalStatus,
-      mainChallenges: mainChallenges ?? this.mainChallenges,
-      relationshipDynamics: relationshipDynamics ?? this.relationshipDynamics,
-      birthplace: birthplace ?? this.birthplace,
-      currentLocation: currentLocation ?? this.currentLocation,
+      job: job ?? this.job,
+      lifeChallenges: lifeChallenges ?? this.lifeChallenges,
+      importantRelationships: importantRelationships ?? this.importantRelationships,
+      birthPlace: birthPlace ?? this.birthPlace,
+      currentResidence: currentResidence ?? this.currentResidence,
+      dreams: dreams ?? this.dreams,
+      impactfulExperiences: impactfulExperiences ?? this.impactfulExperiences,
+      seesTherapist: seesTherapist ?? this.seesTherapist,
+      takesMedication: takesMedication ?? this.takesMedication,
       personalityTestResults: personalityTestResults ?? this.personalityTestResults,
-      importantPeople: importantPeople ?? this.importantPeople,
+      preferencesList: preferencesList ?? this.preferencesList,
+      hobbies: hobbies ?? this.hobbies,
     );
   }
 
