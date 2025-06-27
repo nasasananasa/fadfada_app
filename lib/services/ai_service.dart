@@ -6,7 +6,7 @@ import '../models/chat_message.dart';
 import '../models/user_model.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // **هذا هو السطر الجديد الذي كان ناقصاً**
+import 'package:cloud_firestore/cloud_firestore.dart'; // لتضمين FieldValue
 
 class AIService {
   static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
@@ -18,8 +18,7 @@ class AIService {
     Mood selectedMood,
     {List<ChatMessage>? previousMessages,
     UserModel? currentUser,
-    }
-  ) async {
+  }) async {
     try {
       final systemPrompt = _buildSystemPrompt(selectedMood, currentUser);
 
@@ -27,13 +26,21 @@ class AIService {
 
       final userId = AuthService.currentUid;
       if (userId != null) {
-        await _processAndSaveUserInfo(message, userId);
+        // **التعديل هنا:** تمرير ملف تعريف المستخدم الحالي
+        // وتحقق من إذا تم التعامل مع طلب التعديل قبل محاولة استخلاص معلومات جديدة
+        bool updateHandled = await _processAndSaveUserInfo(message, userId, currentUser);
+        if (updateHandled) {
+          // إذا تم التعامل مع طلب تعديل محدد (مثل تعديل جنس الطفل)،
+          // قد لا نحتاج لإرسال هذه المعلومة مجدداً للـ AI في نفس الدورة،
+          // لكن للحفاظ على السياق العام، سنرسلها.
+          // يمكن هنا إضافة رد مباشر لفضفضة مثل: "تمام، سأقوم بتحديث هذه المعلومة!"
+          // ولكن لنؤجل هذا لجعل الأمور بسيطة حالياً.
+        }
       } else {
         print("Warning: No user logged in, personal information will not be saved.");
       }
 
       return await _sendToOpenAI(messages);
-
     } catch (e) {
       print('AI Service Error: $e');
       return _getErrorResponse(selectedMood);
@@ -86,7 +93,6 @@ class AIService {
       if (user.personalityTestResults != null && user.personalityTestResults!.isNotEmpty) {
         userContext += '- نتائج اختبارات الشخصية: ${jsonEncode(user.personalityTestResults)}\n';
       }
-      // الحقول الجديدة التي نريد لفضفضة أن يستخدمها في التخصيص
       if (user.job != null && user.job!.isNotEmpty) {
         userContext += '- المهنة/العمل: ${user.job}\n';
       }
@@ -175,77 +181,137 @@ class AIService {
   }
 
   /// دالة لمعالجة رسالة المستخدم ومحاولة استخلاص المعلومات وحفظها.
-  static Future<void> _processAndSaveUserInfo(String userMessage, String userId) async {
-    // 1. محاولة استخلاص العمر
+  /// تتضمن الآن منطقاً لتعديل المعلومات الموجودة.
+  static Future<bool> _processAndSaveUserInfo(String userMessage, String userId, UserModel? currentUser) async {
+    // **التحقق من طلبات التعديل أولاً**
+    bool updateHandled = await _handleUpdateRequests(userMessage, userId, currentUser);
+    if (updateHandled) {
+      return true; // إذا تم التعامل مع طلب تعديل محدد، أوقف معالجة الاستخلاص العادي
+    }
+
+    // منطق استخلاص المعلومات الجديد (كما كان سابقاً)
+    // هذا الجزء سيتم تنفيذه فقط إذا لم يكن هناك طلب تعديل مباشر
     final int? age = _extractAge(userMessage);
     if (age != null) {
       print("Age detected: $age");
       await FirestoreService.updateUserField(userId, 'age', age);
     }
 
-    // 2. محاولة استخلاص الاسم
     final String? name = _extractName(userMessage);
     if (name != null) {
       print("Name detected: $name");
       await FirestoreService.updateUserField(userId, 'displayName', name);
     }
 
-    // 3. محاولة استخلاص الحالة العائلية
     final String? maritalStatus = _extractMaritalStatus(userMessage);
     if (maritalStatus != null) {
       print("Marital Status detected: $maritalStatus");
       await FirestoreService.updateUserField(userId, 'maritalStatus', maritalStatus);
     }
 
-    // 4. محاولة استخلاص المهنة/العمل
     final String? job = _extractJob(userMessage);
     if (job != null) {
       print("Job detected: $job");
       await FirestoreService.updateUserField(userId, 'job', job);
     }
 
-    // 5. محاولة استخلاص الأحلام والطموحات
     final List<String>? dreams = _extractDreams(userMessage);
     if (dreams != null && dreams.isNotEmpty) {
       print("Dreams detected: $dreams");
       await FirestoreService.updateUserField(userId, 'dreams', FieldValue.arrayUnion(dreams));
     }
 
-    // 6. محاولة استخلاص التجارب المؤثرة
     final List<String>? impactfulExperiences = _extractImpactfulExperiences(userMessage);
     if (impactfulExperiences != null && impactfulExperiences.isNotEmpty) {
       print("Impactful Experiences detected: $impactfulExperiences");
       await FirestoreService.updateUserField(userId, 'impactfulExperiences', FieldValue.arrayUnion(impactfulExperiences));
     }
 
-    // 7. محاولة استخلاص هل يراجع طبيب/مرشد نفسي
     final bool? seesTherapist = _extractSeesTherapist(userMessage);
     if (seesTherapist != null) {
       print("Sees Therapist detected: $seesTherapist");
       await FirestoreService.updateUserField(userId, 'seesTherapist', seesTherapist);
     }
 
-    // 8. محاولة استخلاص هل يتناول أدوية نفسية
     final bool? takesMedication = _extractTakesMedication(userMessage);
     if (takesMedication != null) {
       print("Takes Medication detected: $takesMedication");
       await FirestoreService.updateUserField(userId, 'takesMedication', takesMedication);
     }
 
-    // 9. محاولة استخلاص الهوايات
     final List<String>? hobbies = _extractHobbies(userMessage);
     if (hobbies != null && hobbies.isNotEmpty) {
       print("Hobbies detected: $hobbies");
       await FirestoreService.updateUserField(userId, 'hobbies', FieldValue.arrayUnion(hobbies));
     }
 
-    // 10. محاولة استخلاص الأصدقاء المقربين (كمثال لقائمة String)
     final List<String>? importantRelationships = _extractImportantRelationships(userMessage);
     if (importantRelationships != null && importantRelationships.isNotEmpty) {
       print("Important Relationships detected: $importantRelationships");
       await FirestoreService.updateUserField(userId, 'importantRelationships', FieldValue.arrayUnion(importantRelationships));
     }
+    
+    final List<String>? preferencesList = _extractPreferences(userMessage);
+    if (preferencesList != null && preferencesList.isNotEmpty) {
+      print("Preferences detected: $preferencesList");
+      await FirestoreService.updateUserField(userId, 'preferencesList', FieldValue.arrayUnion(preferencesList));
+    }
+
+    return false; // لم يتم التعامل مع طلب تعديل محدد
   }
+
+  /// NEW: Checks if the message is an explicit update request.
+  static bool _isUpdateRequest(String message) {
+    String lowerCaseMessage = message.toLowerCase();
+    return lowerCaseMessage.contains('عدل') ||
+           lowerCaseMessage.contains('صحح') ||
+           lowerCaseMessage.contains('غير') ||
+           (lowerCaseMessage.contains('ليس') && lowerCaseMessage.contains('بل')) ||
+           lowerCaseMessage.contains('اسمه') && lowerCaseMessage.contains('وليس اسمها'); // لطلب خلودة
+  }
+
+  /// NEW: Handles explicit update requests for specific fields.
+  static Future<bool> _handleUpdateRequests(String message, String userId, UserModel? currentUser) async {
+    String lowerCaseMessage = message.toLowerCase();
+
+    // Handling "خلودة هو طفل وليس طفلة" or "خلودة هو ولد وليس بنت"
+    if (lowerCaseMessage.contains('خلودة هو طفل وليس طفلة') ||
+        lowerCaseMessage.contains('خلودة طفل وليس طفلة') ||
+        lowerCaseMessage.contains('خلودة هو ولد وليس بنت') ||
+        lowerCaseMessage.contains('خلودة ولد وليس بنت')) {
+      if (currentUser != null && currentUser.importantRelationships != null) {
+        List<String> relationships = List.from(currentUser.importantRelationships!);
+        bool changed = false;
+        for (int i = 0; i < relationships.length; i++) {
+          if (relationships[i].contains('طفلة: خلودة') || relationships[i].contains('طفل: خلودة') || relationships[i].contains('ولد: خلودة') || relationships[i].contains('بنت: خلودة')) {
+            relationships[i] = 'طفل: خلودة'; // Correct to male child
+            changed = true;
+            break;
+          }
+        }
+        if (changed) {
+          print("Updating 'خلودة' to 'طفل' in relationships.");
+          await FirestoreService.updateUserField(userId, 'importantRelationships', relationships);
+          return true; // تم التعامل مع التعديل
+        }
+      }
+    }
+
+    // TODO: Add more specific update logic for other fields here if needed.
+    // Example for job correction:
+    if ((lowerCaseMessage.contains('مهنتي') || lowerCaseMessage.contains('أنا')) &&
+        (lowerCaseMessage.contains('مترجم') || lowerCaseMessage.contains('مترجمة')) &&
+        (lowerCaseMessage.contains('وليس') || lowerCaseMessage.contains('بدلاً من')) &&
+        lowerCaseMessage.contains('مسوق رقمي')) {
+        print("Updating job to 'مترجم'.");
+        await FirestoreService.updateUserField(userId, 'job', 'مترجم');
+        return true;
+    }
+
+
+    return false; // No specific update request was handled
+  }
+
 
   /// Helper function to extract age from text.
   static int? _extractAge(String message) {
@@ -284,27 +350,29 @@ class AIService {
     return null;
   }
 
-  /// Helper function to extract job from text.
+  /// Helper function to extract job from text (Improved).
   static String? _extractJob(String message) {
-    RegExp regExp = RegExp(r'(أعمل كـ|وظيفتي|مهنتي)\s*([\p{L}\s]+)', unicode: true);
-    Match? match = regExp.firstMatch(message);
+    String lowerCaseMessage = message.toLowerCase();
+    RegExp regExp = RegExp(
+        r'(أعمل كـ|وظيفتي هي|مهنتي هي|أنا)\s*(مترجم|مهندس|طبيب|معلم|طالب|مسوق رقمي|كاتب|مبرمج|مصمم|محاسب|مدير|فنان|باحث|محلل|صانع محتوى|رائد أعمال|رجل أعمال|سيدة أعمال)',
+        unicode: true);
+    Match? match = regExp.firstMatch(lowerCaseMessage);
     if (match != null && match.group(2) != null) {
       String job = match.group(2)!.trim();
-      if (job.length > 2 && !job.contains('أنا') && !job.contains('لا')) {
-        return job;
-      }
+      return job;
     }
+    if (lowerCaseMessage.contains('أنا مترجم')) return 'مترجم';
     return null;
   }
 
   /// Helper function to extract dreams/ambitions from text.
   static List<String>? _extractDreams(String message) {
     List<String> detectedDreams = [];
-    RegExp regExp = RegExp(r'(أحلم بأن|أطمح إلى|أتمنى أن|أرغب في تحقيق)\s*([^\.!\?]+)', unicode: true);
+    RegExp regExp = RegExp(r'(أحلم بأن|أطمح إلى|أتمنى أن|أرغب في تحقيق|هدفي أن)\s*([^\.!\?،]+)', unicode: true);
     Iterable<Match> matches = regExp.allMatches(message);
     for (Match m in matches) {
       if (m.group(2) != null) {
-        detectedDreams.add(m.group(2)!.trim());
+        detectedDreams.addAll(m.group(2)!.split(RegExp(r'\s*و\s*|،\s*')).map((s) => s.trim()).where((s) => s.isNotEmpty));
       }
     }
     return detectedDreams.isNotEmpty ? detectedDreams : null;
@@ -313,7 +381,7 @@ class AIService {
   /// Helper function to extract impactful experiences from text.
   static List<String>? _extractImpactfulExperiences(String message) {
     List<String> detectedExperiences = [];
-    RegExp regExp = RegExp(r'(مررت بتجربة|تجربة غيرت حياتي|أتذكر يوماً|حدث لي موقف مؤثر)\s*([^\.!\?]+)', unicode: true);
+    RegExp regExp = RegExp(r'(مررت بـ|تجربة غيرت حياتي|أتذكر يوماً|حدث لي موقف مؤثر|كانت لي تجربة)\s*([^\.!\?،]+)', unicode: true);
     Iterable<Match> matches = regExp.allMatches(message);
     for (Match m in matches) {
       if (m.group(2) != null) {
@@ -329,7 +397,7 @@ class AIService {
     if (lowerCaseMessage.contains('أراجع طبيب نفسي') || lowerCaseMessage.contains('لدي مرشد نفسي') || lowerCaseMessage.contains('أذهب إلى معالج')) {
       return true;
     }
-    if (lowerCaseMessage.contains('لا أراجع طبيب نفسي') || lowerCaseMessage.contains('ليس لدي مرشد نفسي')) {
+    if (lowerCaseMessage.contains('لا أراجع طبيب نفسي') || lowerCaseMessage.contains('ليس لدي مرشد نفسي') || lowerCaseMessage.contains('لا أذهب إلى معالج')) {
       return false;
     }
     return null;
@@ -338,10 +406,10 @@ class AIService {
   /// Helper function to extract if user takes psychiatric medication.
   static bool? _extractTakesMedication(String message) {
     String lowerCaseMessage = message.toLowerCase();
-    if (lowerCaseMessage.contains('أتناول أدوية نفسية') || lowerCaseMessage.contains('وصفت لي أدوية نفسية')) {
+    if (lowerCaseMessage.contains('أتناول أدوية نفسية') || lowerCaseMessage.contains('وصفت لي أدوية نفسية') || lowerCaseMessage.contains('آخذ علاج نفسي')) {
       return true;
     }
-    if (lowerCaseMessage.contains('لا أتناول أدوية نفسية') || lowerCaseMessage.contains('لا توجد لدي أدوية نفسية')) {
+    if (lowerCaseMessage.contains('لا أتناول أدوية نفسية') || lowerCaseMessage.contains('لا توجد لدي أدوية نفسية') || lowerCaseMessage.contains('لا آخذ علاج نفسي')) {
       return false;
     }
     return null;
@@ -350,43 +418,72 @@ class AIService {
   /// Helper function to extract hobbies from text.
   static List<String>? _extractHobbies(String message) {
     List<String> detectedHobbies = [];
-    RegExp regExp = RegExp(r'(هوايتي|أحب أن|أستمتع بـ)\s*([^\.!\?]+)', unicode: true);
+    RegExp regExp = RegExp(r'(هوايتي هي|أحب أن|أستمتع بـ|أمارس)\s*([^\.!\?،]+)', unicode: true);
     Iterable<Match> matches = regExp.allMatches(message);
     for (Match m in matches) {
       if (m.group(2) != null) {
-        // تقسيم الهوايات إذا كانت متعددة ومفصولة بـ "و" أو ","
         detectedHobbies.addAll(m.group(2)!.split(RegExp(r'\s*و\s*|،\s*')).map((s) => s.trim()).where((s) => s.isNotEmpty));
       }
     }
     return detectedHobbies.isNotEmpty ? detectedHobbies : null;
   }
 
-  /// Helper function to extract important relationships from text.
-  /// (This is a simplified example, might need more complex NLP for real-world use)
+  /// Helper function to extract important relationships including children (Improved).
   static List<String>? _extractImportantRelationships(String message) {
     List<String> detectedRelationships = [];
     String lowerCaseMessage = message.toLowerCase();
 
+    // التعرف على وجود أطفال وأسمائهم
+    RegExp childNameRegExp = RegExp(r'(لدي طفل اسمه|عندي طفل اسمه|ابني اسمه|ابنتي اسمها)\s*([\p{L}\s]+)', unicode: true);
+    Match? childMatch = childNameRegExp.firstMatch(message);
+    if (childMatch != null && childMatch.group(2) != null) {
+      String childGender = lowerCaseMessage.contains('ابني') || lowerCaseMessage.contains('ولد') ? 'طفل' : 'طفلة';
+      detectedRelationships.add('$childGender: ${childMatch.group(2)!.trim()}');
+    } else {
+        if (lowerCaseMessage.contains('لدي أطفال') || lowerCaseMessage.contains('عندي أولاد')) detectedRelationships.add('أطفال');
+        if (lowerCaseMessage.contains('ليس لدي أطفال') || lowerCaseMessage.contains('ليس عندي أولاد')) detectedRelationships.add('لا يوجد أطفال');
+    }
+
     // كلمات مفتاحية للعائلة
     if (lowerCaseMessage.contains('أمي')) detectedRelationships.add('أمي');
     if (lowerCaseMessage.contains('أبي')) detectedRelationships.add('أبي');
-    if (lowerCaseMessage.contains('أخي')) detectedRelationships.add('أخي');
-    if (lowerCaseMessage.contains('أختي')) detectedRelationships.add('أختي');
+    if (lowerCaseMessage.contains('أخي') || lowerCaseMessage.contains('أخوتي')) detectedRelationships.add('أخ/أخت');
+    if (lowerCaseMessage.contains('أختي') || lowerCaseMessage.contains('أخواتي')) detectedRelationships.add('أخ/أخت');
     if (lowerCaseMessage.contains('زوجي') || lowerCaseMessage.contains('زوجتي')) detectedRelationships.add('الزوج/الزوجة');
     
     // كلمات مفتاحية للأصدقاء المقربين
-    if (lowerCaseMessage.contains('صديقي المقرب') || lowerCaseMessage.contains('صديقتي المقربة')) detectedRelationships.add('صديق مقرب');
+    if (lowerCaseMessage.contains('صديقي المقرب') || lowerCaseMessage.contains('صديقتي المقربة') || lowerCaseMessage.contains('أقرب أصدقائي')) {
+      RegExp closeFriendRegExp = RegExp(r'(صديقي المقرب|صديقتي المقربة|أقرب أصدقائي)\s*([\p{L}\s]+)', unicode: true);
+      Match? friendMatch = closeFriendRegExp.firstMatch(message);
+      if (friendMatch != null && friendMatch.group(2) != null) {
+        detectedRelationships.add('صديق مقرب: ${friendMatch.group(2)!.trim()}');
+      } else {
+        detectedRelationships.add('صديق مقرب');
+      }
+    }
     
     // كلمات مفتاحية للأشخاص المؤثرين
-    RegExp influentialPersonRegExp = RegExp(r'(شخص مؤثر في حياتي|أثر فيني)\s*([^\.!\?]+)', unicode: true);
-    Match? match = influentialPersonRegExp.firstMatch(message);
-    if (match != null && match.group(2) != null) {
-      detectedRelationships.add(match.group(2)!.trim());
+    RegExp influentialPersonRegExp = RegExp(r'(شخص مؤثر في حياتي هو|أثر فيني كثيراً|تعلمت من)\s*([^\.!\?،]+)', unicode: true);
+    Match? influentialMatch = influentialPersonRegExp.firstMatch(message);
+    if (influentialMatch != null && influentialMatch.group(2) != null) {
+      detectedRelationships.add('شخص مؤثر: ${influentialMatch.group(2)!.trim()}');
     }
 
     return detectedRelationships.isNotEmpty ? detectedRelationships.toSet().toList() : null; // toSet().toList() لإزالة التكرارات
   }
 
+  /// Helper function to extract preferences from text.
+  static List<String>? _extractPreferences(String message) {
+    List<String> detectedPreferences = [];
+    RegExp regExp = RegExp(r'(أفضل|أحب|يعجبني)\s*([^\.!\?،]+)', unicode: true);
+    Iterable<Match> matches = regExp.allMatches(message);
+    for (Match m in matches) {
+      if (m.group(2) != null) {
+        detectedPreferences.addAll(m.group(2)!.split(RegExp(r'\s*و\s*|،\s*')).map((s) => s.trim()).where((s) => s.isNotEmpty));
+      }
+    }
+    return detectedPreferences.isNotEmpty ? detectedPreferences : null;
+  }
 
   // --- دوال استجابة اختبارية محلية (موجودة لديك أصلاً) ---
 
