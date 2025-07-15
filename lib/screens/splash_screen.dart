@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen> {
               end: Alignment.bottomCenter,
               colors: [
                 Theme.of(context).primaryColor,
-                Theme.of(context).primaryColor.withOpacity(0.8),
+                Theme.of(context).primaryColor.withAlpha((255 * 0.8).round()),
               ],
             ),
           ),
@@ -64,7 +64,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withAlpha((255 * 0.1).round()),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -107,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 Text(
                   'مساحة آمنة للدعم النفسي',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withAlpha((255 * 0.9).round()),
                     fontSize: 18,
                   ),
                   textAlign: TextAlign.center,
@@ -128,9 +128,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   height: 40,
                   child: CircularProgressIndicator(
                     strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Colors.white.withOpacity(0.8),
-                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withAlpha((255 * 0.8).round())),
                   ),
                 )
                     .animate(delay: const Duration(milliseconds: 1200))
@@ -141,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 Text(
                   'جاري التحضير...',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withAlpha((255 * 0.7).round()),
                   ),
                 )
                     .animate(delay: const Duration(milliseconds: 1400))

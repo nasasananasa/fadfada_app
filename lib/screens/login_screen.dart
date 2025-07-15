@@ -1,5 +1,6 @@
+// lib/screens/login_screen.dart
+
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../services/auth_service.dart';
 import '../screens/home_screen.dart';
 import '../widgets/custom_button.dart';
@@ -29,10 +30,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // ✅ FIX: Set duration
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('حدث خطأ في تسجيل الدخول: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 1),
           ),
         );
       }
@@ -55,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
             end: Alignment.bottomCenter,
             colors: [
               Theme.of(context).scaffoldBackgroundColor,
-              Theme.of(context).primaryColor.withOpacity(0.1),
+              Theme.of(context).primaryColor.withAlpha((255 * 0.1).round()),
             ],
           ),
         ),
@@ -76,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(25),
                           boxShadow: [
                             BoxShadow(
-                              color: Theme.of(context).primaryColor.withOpacity(0.3),
+                              color: Theme.of(context).primaryColor.withAlpha((255 * 0.3).round()),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -100,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         'مساحة آمنة للدعم النفسي الأولي\nتحدث مع صديق افتراضي متفهم',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                              color: Theme.of(context).textTheme.bodyMedium?.color?.withAlpha((255 * 0.7).round()),
                               height: 1.5,
                             ),
                         textAlign: TextAlign.center,
@@ -114,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Theme.of(context).primaryColor.withOpacity(0.2),
+                        color: Theme.of(context).primaryColor.withAlpha((255 * 0.2).round()),
                       ),
                     ),
                     child: Column(
@@ -155,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'بالمتابعة، أنت توافق على شروط الاستخدام وسياسة الخصوصية',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                          color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha((255 * 0.6).round()),
                         ),
                     textAlign: TextAlign.center,
                   ),
@@ -163,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'إصدار 1.0.0',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.5),
+                          color: Theme.of(context).textTheme.bodySmall?.color?.withAlpha((255 * 0.5).round()),
                         ),
                   ),
                   const SizedBox(height: 24),

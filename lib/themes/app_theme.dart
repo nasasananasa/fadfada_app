@@ -58,11 +58,11 @@ class AppTheme {
       fillColor: white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: darkGray.withOpacity(0.3)),
+        borderSide: BorderSide(color: darkGray.withAlpha((255 * 0.3).round())),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: darkGray.withOpacity(0.3)),
+        borderSide: BorderSide(color: darkGray.withAlpha((255 * 0.3).round())),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -71,7 +71,7 @@ class AppTheme {
       contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       hintStyle: TextStyle(
         fontFamily: 'Cairo',
-        color: darkGray.withOpacity(0.7),
+        color: darkGray.withAlpha((255 * 0.7).round()),
       ),
     ),
     

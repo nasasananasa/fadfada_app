@@ -1,23 +1,23 @@
+// lib/screens/chat_screen.dart
+
+import 'dart:async';
+import 'package:fadfada_app/models/chat_message.dart';
+import 'package:fadfada_app/models/user_model.dart';
+import 'package:fadfada_app/services/active_session_service.dart';
+import 'package:fadfada_app/services/ai_service.dart';
+import 'package:fadfada_app/services/auth_service.dart';
+import 'package:fadfada_app/services/firestore_service.dart';
+import 'package:fadfada_app/widgets/chat_bubble.dart';
+import 'package:fadfada_app/widgets/typing_indicator.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:uuid/uuid.dart';
-import '../models/mood.dart';
-import '../models/chat_message.dart';
-import '../models/user_model.dart';
-import '../services/ai_service.dart';
-import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
-import '../widgets/chat_bubble.dart';
-import '../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
-  final Mood selectedMood;
   final String? sessionId;
   final VoidCallback? onSessionEnd;
 
   const ChatScreen({
     super.key,
-    required this.selectedMood,
     this.sessionId,
     this.onSessionEnd,
   });
@@ -30,11 +30,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  StreamSubscription? _messagesSubscription;
 
   bool _isTyping = false;
   bool _isLoading = true;
   String? _currentSessionId;
   UserModel? _currentUser;
+  bool _hasNewMessages = false;
+  String? _chatTitle;
 
   @override
   void initState() {
@@ -42,52 +45,34 @@ class _ChatScreenState extends State<ChatScreen> {
     _initializeChat();
   }
 
+  @override
+  void dispose() {
+    _messagesSubscription?.cancel();
+    _triggerAnalysisOnExit();
+    ActiveSessionService.currentSessionId = null;
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _initializeChat() async {
     try {
       final userId = AuthService.currentUid;
       if (userId != null) {
         _currentUser = await FirestoreService.getUserProfile();
-        if (_currentUser == null) {
-          print('Warning: User profile not found for ID: $userId. AI responses may be less personalized.');
-        }
-      } else {
-        print('Warning: No user logged in. AI responses will not be personalized.');
       }
 
       if (widget.sessionId != null) {
         _currentSessionId = widget.sessionId;
-        await _loadExistingChat();
+        ActiveSessionService.currentSessionId = _currentSessionId;
+        _listenToMessages();
+        await _fetchChatSessionTitle();
       } else {
-        final newSessionId = await FirestoreService.createChatSession(widget.selectedMood.id);
-        if (newSessionId != null) {
-          _currentSessionId = newSessionId;
-          _addWelcomeMessage();
-        } else {
-          print('Failed to create new chat session. Using a fallback for messages locally.');
-          _currentSessionId = null;
-          _addWelcomeMessage();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('فشل في بدء جلسة دردشة جديدة. قد لا يتم حفظ الرسائل.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        }
+        _addWelcomeMessage(isLocalOnly: true);
       }
     } catch (e) {
-      print('Error initializing chat: $e');
-      _currentSessionId = null;
-      _addWelcomeMessage();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('حدث خطأ في تهيئة الدردشة: $e. قد لا يتم حفظ الرسائل.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      debugPrint('Error initializing chat: $e');
+      _addWelcomeMessage(isLocalOnly: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -98,112 +83,129 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _loadExistingChat() async {
-    if (_currentSessionId != null) {
-      FirestoreService.getChatMessages(_currentSessionId!).listen((messages) {
-        if (!mounted) return;
-
+  Future<void> _fetchChatSessionTitle() async {
+    if (_currentSessionId == null) return;
+    try {
+      final sessionDoc = await FirestoreService.getChatSession(_currentSessionId!);
+      if (mounted) {
         setState(() {
-          _messages.clear();
-          _messages.addAll(messages);
+          _chatTitle = sessionDoc?['title'] as String?;
         });
-        _scrollToBottom();
-      }, onError: (e) {
-        print('Error loading existing chat messages: $e');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('حدث خطأ في تحميل الرسائل: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      });
+      }
+    } catch (e) {
+      debugPrint('Error fetching chat session title: $e');
+      if (mounted) {
+        setState(() {
+          _chatTitle = 'خطأ في التحميل';
+        });
+      }
     }
   }
 
-  void _addWelcomeMessage() {
+  void _listenToMessages() {
+    if (_currentSessionId == null) return;
+    
+    _messagesSubscription =
+        FirestoreService.getChatMessages(_currentSessionId!).listen((messages) {
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _messages.addAll(messages);
+      });
+      _scrollToBottom();
+    }, onError: (e) {
+      debugPrint('Error loading chat messages: $e');
+      if(mounted) {
+        // ✅ FIX 1
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في تحديث الجلسات: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    });
+  }
+
+  void _addWelcomeMessage({bool isLocalOnly = false}) {
+    final userId = AuthService.currentUid;
+    if (userId == null) return;
+
     final welcomeMessage = ChatMessage(
       id: const Uuid().v4(),
       content: _getWelcomeMessage(),
       timestamp: DateTime.now(),
       isFromUser: false,
       sessionId: _currentSessionId,
+      userId: userId,
     );
-
-    setState(() {
-      _messages.add(welcomeMessage);
-    });
-
-    if (_currentSessionId != null) {
+    
+    if (isLocalOnly) {
+       if (mounted) {
+        setState(() {
+          _messages.add(welcomeMessage);
+        });
+      }
+    } else {
       FirestoreService.addChatMessage(welcomeMessage);
     }
   }
 
   String _getWelcomeMessage() {
-    String userName = _currentUser?.displayName ?? 'صديقي';
-    
-    switch (widget.selectedMood.id) {
-      case 'happy':
-        return 'أهلاً بك يا $userName! يسعدني أن أرى أنك تشعر بالسعادة اليوم. شاركني ما الذي يجعلك سعيداً!';
-      case 'anxious':
-        return 'مرحباً يا $userName، أفهم أنك تشعر بالقلق الآن. أنا هنا لأستمع إليك وأساعدك. خذ نفساً عميقاً وحدثني عما يقلقك.';
-      case 'sad':
-        return 'أهلاً بك يا $userName. أرى أنك تمر بوقت صعب، وأريدك أن تعلم أنني هنا لأستمع إليك. أحياناً يساعد الحديث عن مشاعرنا.';
-      case 'stressed':
-        return 'مرحباً يا $userName، أفهم أنك تشعر بالضغط الآن. دعنا نتحدث عما يضغط عليك ونجد طرقاً للتعامل معه معاً.';
-      case 'confused':
-        return 'أهلاً بك يا $userName. أرى أنك تشعر بالتشويش، وهذا أمر طبيعي أحياناً. دعنا نتحدث ونرتب الأفكار معاً.';
-      case 'tired':
-        return 'مرحباً يا $userName، أرى أنك تشعر بالتعب. من المهم أن نهتم بأنفسنا. حدثني عما استنزف طاقتك.';
-      case 'angry':
-        return 'أهلاً بك يا $userName. أفهم أنك تشعر بالغضب الآن. الغضب مشاعر طبيعية، دعنا نتحدث عما يزعجك.';
-      case 'peaceful':
-        return 'مرحباً يا $userName! ما أجمل أن تشعر بالسلام الداخلي. شاركني كيف وصلت لهذا الشعور الرائع.';
-      default:
-        return 'أهلاً بك يا $userName! أنا هنا لأستمع إليك ولأساعدك. حدثني عما تشعر به.';
-    }
+    final String userName = _currentUser?.displayName ?? 'صديقي';
+    return 'أهلاً بك يا $userName! أنا هنا لأستمع إليك. حدثني عما تشعر به.';
   }
 
   Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty) return;
 
-    if (_currentSessionId == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('لا يمكن إرسال الرسالة: لا توجد جلسة دردشة نشطة لحفظ الرسائل.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
+    final userId = AuthService.currentUid;
+    if (userId == null) {
+        // ✅ FIX 2
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('خطأ: المستخدم غير مسجل.'),
+          duration: Duration(seconds: 1),
+        ));
+        return;
     }
-
-    final userMessage = ChatMessage(
-      id: const Uuid().v4(),
-      content: messageText,
-      timestamp: DateTime.now(),
-      isFromUser: true,
-      sessionId: _currentSessionId,
-    );
-
+    
     setState(() {
-      _messages.add(userMessage);
       _isTyping = true;
+      _hasNewMessages = true; 
     });
-
     _messageController.clear();
-    _scrollToBottom();
-
-    await FirestoreService.addChatMessage(userMessage);
 
     try {
+      if (_currentSessionId == null) {
+        final newSessionId = await FirestoreService.createChatSession();
+        if (newSessionId == null) {
+          throw Exception("Failed to create a new chat session.");
+        }
+        _currentSessionId = newSessionId;
+        ActiveSessionService.currentSessionId = _currentSessionId;
+        _listenToMessages();
+
+        final welcomeMessage = _messages.firstWhere((msg) => !msg.isFromUser);
+        await FirestoreService.addChatMessage(welcomeMessage.copyWith(sessionId: _currentSessionId));
+      }
+
+      final userMessage = ChatMessage(
+        id: const Uuid().v4(),
+        content: messageText,
+        timestamp: DateTime.now(),
+        isFromUser: true,
+        sessionId: _currentSessionId!,
+        userId: userId,
+      );
+      await FirestoreService.addChatMessage(userMessage);
+
       final aiResponse = await AIService.sendMessage(
         messageText,
-        widget.selectedMood,
         previousMessages: _messages.reversed.take(10).toList().reversed.toList(),
         currentUser: _currentUser,
+        isFirstMessage: !_messages.any((m) => m.isFromUser),
       );
 
       final aiMessage = ChatMessage(
@@ -211,43 +213,32 @@ class _ChatScreenState extends State<ChatScreen> {
         content: aiResponse,
         timestamp: DateTime.now(),
         isFromUser: false,
-        sessionId: _currentSessionId,
+        sessionId: _currentSessionId!,
+        userId: userId,
       );
-
-      setState(() {
-        _messages.add(aiMessage);
-        _isTyping = false;
-      });
-
       await FirestoreService.addChatMessage(aiMessage);
-      await FirestoreService.updateChatSessionLastMessageAt(_currentSessionId!, DateTime.now());
 
-      // **السطر الجديد:** إعادة تحميل ملف تعريف المستخدم بعد أي رسالة
-      // هذا يضمن أن بيانات currentUser في هذه الشاشة محدثة دائماً
-      final userId = AuthService.currentUid;
-      if (userId != null) {
-        _currentUser = await FirestoreService.getUserProfile();
-        print("User profile reloaded after message for latest data.");
-      }
-      // **نهاية السطر الجديد**
+      _currentUser = await FirestoreService.getUserProfile();
 
-      _scrollToBottom();
     } catch (e) {
+      debugPrint("Error sending message: $e");
+      if (mounted) {
+        // ✅ FIX 3
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('حدث خطأ أثناء الإرسال: $e'),
+          duration: const Duration(seconds: 1),
+        ));
+      }
+    } finally {
       if (mounted) {
         setState(() {
           _isTyping = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('حدث خطأ في إرسال الرسالة أو تلقي رد الذكاء الاصطناعي: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     }
   }
 
-  void _scrollToBottom() {
+void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -259,173 +250,120 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _startNewChat() {
-    Navigator.of(context).pop();
-    if (widget.onSessionEnd != null) {
-      widget.onSessionEnd!();
-    }
-  }
-
-  void _showSuggestions() {
-    final suggestions = AIService.getConversationStarters(widget.selectedMood);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'اقتراحات للحديث',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            ...suggestions.map((suggestion) => ListTile(
-                  leading: Icon(
-                    Icons.chat_bubble_outline,
-                    color: widget.selectedMood.color,
-                  ),
-                  title: Text(suggestion),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _messageController.text = suggestion;
-                  },
-                )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _handleSessionEndAndPop() {
-    if (widget.onSessionEnd != null) {
-      widget.onSessionEnd!();
-    }
-    Navigator.of(context).pop();
-  }
-
-  void _clearChat() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('مسح المحادثة'),
-        content: const Text('هل أنت متأكد من أنك تريد مسح هذه المحادثة؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-
-              if (_currentSessionId != null) {
-                await FirestoreService.deleteChatSession(_currentSessionId!);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('تم مسح المحادثة بنجاح'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('لا توجد جلسة لحذفها.'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                }
-              _handleSessionEndAndPop();
-            },
-            child: const Text('مسح'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Temporary test function to save age
-  Future<void> _saveTestAge() async {
-    final String? userId = AuthService.currentUid;
-    if (userId == null) {
-      print("Not logged in, cannot save test age.");
+void _triggerAnalysisOnExit() async {
+  if (_hasNewMessages && _messages.any((m) => m.isFromUser) && _currentSessionId != null) {
+    debugPrint("--- [chat_screen.dart] Triggering background tasks on exit for session: $_currentSessionId ---");
+    
+    await Future.delayed(const Duration(seconds: 1));
+    
+    try {
+      await Future.wait([
+        AIService.analyzeConversationV2(_currentSessionId!),
+        AIService.generateChatTitle(_currentSessionId!),
+      ]);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('الرجاء تسجيل الدخول أولاً لحفظ البيانات التجريبية.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        await _fetchChatSessionTitle();
       }
+      debugPrint("Background tasks (analysis and title generation) triggered successfully.");
+    } catch (e) {
+      debugPrint("An error occurred while triggering background tasks: $e");
+    }
+
+  } else {
+    debugPrint("Analysis and title generation skipped for session: $_currentSessionId (no new messages).");
+  }
+}
+
+  Future<void> _editChatTitle() async {
+    if (_currentSessionId == null) {
+      // ✅ FIX 4
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا يمكن تعديل عنوان جلسة لم تبدأ بعد.'),
+          duration: Duration(seconds: 1),
+        ),
+      );
       return;
     }
 
-    try {
-      await FirestoreService.updateUserField(userId, 'age', 30);
-      print("Test age saved successfully!");
-      if (mounted) {
-        setState(() {
-          _messages.add(ChatMessage(
-            id: const Uuid().v4(),
-            content: 'تم حفظ عمرك التجريبي (30 سنة) في مفكرتي! (للاختبار فقط)',
-            timestamp: DateTime.now(),
-            isFromUser: false,
-            sessionId: _currentSessionId,
-          ));
-        });
-        _currentUser = await FirestoreService.getUserProfile(); // إعادة تحميل بعد التعديل
-      }
-    } catch (e) {
-      print("An error occurred while saving test age: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+    final TextEditingController titleEditController = TextEditingController(text: _chatTitle ?? '');
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    final String? newTitle = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('تعديل عنوان الدردشة'),
+          content: TextField(
+            controller: titleEditController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'اكتب العنوان الجديد...'),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => navigator.pop(),
+              child: const Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: () => navigator.pop(titleEditController.text.trim()),
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newTitle != null && newTitle.isNotEmpty && newTitle != _chatTitle) {
+      try {
+        await FirestoreService.updateChatSessionTitle(_currentSessionId!, newTitle);
+        if (mounted) {
+          setState(() {
+            _chatTitle = newTitle;
+          });
+        }
+        // ✅ FIX 5
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('تم تحديث العنوان بنجاح!'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error updating chat title: $e');
+        // ✅ FIX 6
+        scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ أثناء محاولة حفظ العمر التجريبي: $e'),
-            backgroundColor: Colors.red,
+            content: Text('فشل تحديث العنوان: $e'),
+            duration: const Duration(seconds: 1),
           ),
         );
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) return;
-        _handleSessionEndAndPop();
+        
+        if (widget.onSessionEnd != null) {
+          widget.onSessionEnd!();
+        }
+        Navigator.of(context).pop();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('الدردشة مع ${widget.selectedMood.arabicName}'),
+          title: Text(_chatTitle ?? 'دردشة جديدة'),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.baby_changing_station),
-              onPressed: _saveTestAge,
-              tooltip: 'حفظ عمر تجريبي (للاختبار)',
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'بدء محادثة جديدة',
-              onPressed: _startNewChat,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_forever),
-              tooltip: 'مسح المحادثة',
-              onPressed: _clearChat,
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline),
-              tooltip: 'اقتراحات للحديث',
-              onPressed: _showSuggestions,
-            ),
+            if (_currentSessionId != null)
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _editChatTitle,
+              ),
           ],
         ),
         body: Column(
@@ -433,50 +371,19 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _messages.isEmpty && !_isTyping
-                      ? Center(
-                          child: Text(
-                            'ابدأ محادثتك الأولى مع ${widget.selectedMood.arabicName}!',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _messages.length + (_isTyping ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == _messages.length && _isTyping) {
-                              return const TypingIndicator()
-                                  .animate()
-                                  .fadeIn(duration: const Duration(milliseconds: 300));
-                            }
-
-                            final message = _messages[index];
-                            return ChatBubble(message: message)
-                                .animate(delay: Duration(milliseconds: 100 * index))
-                                .fadeIn(duration: const Duration(milliseconds: 400))
-                                .slideX(
-                                  begin: message.isFromUser ? 0.3 : -0.3,
-                                  end: 0,
-                                );
-                          },
-                        ),
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final message = _messages[index];
+                        return ChatBubble(message: message);
+                      },
+                    ),
             ),
+            if (_isTyping) const TypingIndicator(),
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
               child: Row(
                 children: [
                   Expanded(
@@ -489,30 +396,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Theme.of(context).scaffoldBackgroundColor,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
                       ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: widget.selectedMood.color,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      onPressed: _sendMessage,
-                      icon: const Icon(
-                        Icons.send,
-                        color: Colors.white,
-                      ),
-                    ),
+                  IconButton(
+                    onPressed: _sendMessage,
+                    icon: Icon(Icons.send, color: Theme.of(context).primaryColor),
                   ),
                 ],
               ),
@@ -521,12 +412,5 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 }

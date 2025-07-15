@@ -1,8 +1,13 @@
+// lib/screens/chat_tab.dart
+
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fadfada_app/screens/chat_screen.dart';
+import 'package:fadfada_app/services/auth_service.dart';
+import 'package:fadfada_app/services/firestore_service.dart';
 import 'package:flutter/material.dart';
-import '../screens/mood_selector_screen.dart';
-import '../screens/chat_screen.dart';
-import '../models/mood.dart';
-import '../services/firestore_service.dart';
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatTab extends StatefulWidget {
   const ChatTab({super.key});
@@ -12,202 +17,290 @@ class ChatTab extends StatefulWidget {
 }
 
 class _ChatTabState extends State<ChatTab> {
-  List<Map<String, dynamic>> _previousSessions = [];
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<QuerySnapshot>? _chatSessionSubscription;
+
   bool _isLoading = true;
+  String? _error;
+  List<QueryDocumentSnapshot> _chatSessions = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchPreviousSessions();
-  }
-
-  Future<void> _fetchPreviousSessions() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    final sessions = await FirestoreService.getUserChatSessionsOnce();
-
-    if (!mounted) return;
-
-    setState(() {
-      _previousSessions = sessions;
-      _isLoading = false;
+    _authSubscription = AuthService.authStateChanges.listen((user) {
+      if (user == null) {
+        _chatSessionSubscription?.cancel();
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _chatSessions = [];
+            _error = 'الرجاء تسجيل الدخول لعرض الدردشات.';
+          });
+        }
+      } else {
+        _listenToChatSessions();
+      }
     });
   }
 
-  void _startNewChatFlow() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => MoodSelectorScreen(
-          onMoodSelected: (Mood mood) async {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => ChatScreen(
-                  selectedMood: mood,
-                  onSessionEnd: _handleSessionEnd,
+  void _listenToChatSessions() {
+    if (_chatSessionSubscription == null) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    _chatSessionSubscription?.cancel();
+
+    _chatSessionSubscription = FirebaseFirestore.instance
+        .collection('chat_sessions')
+        .where('userId', isEqualTo: AuthService.currentUid)
+        .orderBy('lastMessageAt', descending: true)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _chatSessions = snapshot.docs;
+            _isLoading = false;
+            _error = null;
+          });
+        }
+      },
+      onError: (error) {
+        debugPrint("Error listening to chat sessions: $error");
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _error = 'حدث خطأ أثناء تحميل الدردشات.';
+          });
+        }
+      },
+    );
+  }
+
+  // ✅ START: NEW REFRESH HANDLER FUNCTION
+  Future<void> _handleRefresh() async {
+    _listenToChatSessions();
+    await Future.delayed(const Duration(seconds: 1));
+  }
+  // ✅ END: NEW REFRESH HANDLER FUNCTION
+
+  @override
+  void dispose() {
+    _chatSessionSubscription?.cancel();
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _showEditTitleDialog(QueryDocumentSnapshot session, String currentTitle) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    final titleController = TextEditingController(text: currentTitle);
+    
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('تعديل عنوان الدردشة'),
+          content: TextField(
+            controller: titleController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'اكتب العنوان الجديد...'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => navigator.pop(),
+              child: const Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: () {
+                navigator.pop(titleController.text.trim());
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newTitle != null && newTitle.isNotEmpty && newTitle != currentTitle) {
+      try {
+        await FirestoreService.updateChatSessionTitle(session.id, newTitle);
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('تم تحديث العنوان بنجاح!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      } catch (e) {
+        debugPrint("Error updating title: $e");
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('حدث خطأ أثناء حفظ العنوان.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+  }
+ 
+ @override
+  Widget build(BuildContext context) {
+    Widget body;
+    if (_isLoading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_error != null) {
+      body = Center(child: Text(_error!));
+    } else if (_chatSessions.isEmpty) {
+      body = RefreshIndicator( // ✅ Wrap with RefreshIndicator
+        onRefresh: _handleRefresh,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+             height: MediaQuery.of(context).size.height * 0.7,
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
+                  SizedBox(height: 20),
+                  Text('لا توجد دردشات سابقة.', style: TextStyle(fontSize: 18)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      body = RefreshIndicator( // ✅ Wrap with RefreshIndicator
+        onRefresh: _handleRefresh,
+        child: ListView.builder(
+          itemCount: _chatSessions.length,
+          itemBuilder: (context, index) {
+            final session = _chatSessions[index];
+            final data = session.data() as Map<String, dynamic>;
+
+            final smartTitle = data['title'] as String?;
+            final timestamp = data['lastMessageAt'] as Timestamp?;
+            
+            final dateSubtitle = timestamp != null
+                ? DateFormat('d MMMM, hh:mm a', 'ar').format(timestamp.toDate())
+                : '';
+
+            return Dismissible(
+              key: Key('chat_session_${session.id}'),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                color: Colors.red[700],
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                alignment: Alignment.centerLeft,
+                child: const Icon(Icons.delete_forever, color: Colors.white),
+              ),
+              confirmDismiss: (direction) async {
+                return await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('تأكيد الحذف'),
+                    content: const Text(
+                        'هل أنت متأكد من رغبتك في حذف هذه الدردشة نهائياً؟ لا يمكن التراجع عن هذا الإجراء.'),
+                    actions: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('إلغاء'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style:
+                            TextButton.styleFrom(foregroundColor: Colors.red),
+                        child: const Text('حذف'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              onDismissed: (direction) async {
+                final sessionId = _chatSessions[index].id;
+                final itemTitle = smartTitle ?? dateSubtitle;
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                setState(() {
+                  _chatSessions.removeAt(index);
+                });
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('تم حذف الدردشة: $itemTitle'),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+                try {
+                  await FirestoreService.deleteChatSession(sessionId);
+                  debugPrint(
+                      "Successfully deleted session $sessionId from Firestore.");
+                } catch (e) {
+                  debugPrint(
+                      "Failed to delete chat session from Firestore: $e");
+                  if (mounted) {
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('فشل في حذف الدردشة من قاعدة البيانات.'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: Card(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: ListTile(
+                  leading: Icon(Icons.chat_bubble_outline, color: Theme.of(context).primaryColor, size: 30),
+                  title: Text(
+                    smartTitle ?? 'دردشة...',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(dateSubtitle),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () {
+                      _showEditTitleDialog(session, smartTitle ?? '');
+                    },
+                  ),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => ChatScreen(
+                        sessionId: session.id,
+                      ),
+                    ));
+                  },
                 ),
               ),
             );
           },
         ),
-      ),
-    );
-    _fetchPreviousSessions();
-  }
+      );
+    }
 
-  void _openSession(Map<String, dynamic> session) async {
-    final moodId = session['moodId'] ?? 'unknown';
-    final mood = Mood.getById(moodId);
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          selectedMood: mood,
-          sessionId: session['id'],
-          onSessionEnd: _handleSessionEnd,
-        ),
-      ),
-    );
-    _fetchPreviousSessions();
-  }
-
-  void _handleSessionEnd() {
-    print('✅ تم استدعاء _handleSessionEnd - تحديث الجلسات');
-    _fetchPreviousSessions();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الدردشات السابقة'),
+        title: const Text('الدردشات'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _previousSessions.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.chat_bubble_outline,
-                        size: 80,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'لا توجد دردشات سابقة',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'ابدأ محادثة جديدة للتعبير عن مشاعرك',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.grey[500],
-                            ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
-                      // هذا الزر السفلي في حالة الشاشة الفارغة
-                      ElevatedButton.icon(
-                        onPressed: _startNewChatFlow,
-                        icon: const Icon(Icons.add),
-                        label: const Text('ابدأ محادثة جديدة'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).primaryColor,
-                          foregroundColor: Colors.white,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: _previousSessions.length,
-                  itemBuilder: (context, index) {
-                    final session = _previousSessions[index];
-                    final timestamp = session['createdAt']?.toDate();
-                    final moodId = session['moodId'] ?? 'unknown';
-                    final mood = Mood.getById(moodId);
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: ListTile(
-                        leading: Icon(mood.icon, color: mood.color, size: 30),
-                        title: Text(
-                          'جلسة دردشة مع ${mood.arabicName}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        subtitle: timestamp != null
-                            ? Text(
-                                'بتاريخ: ${timestamp.toLocal().day}/${timestamp.toLocal().month}/${timestamp.toLocal().year} ${timestamp.toLocal().hour}:${timestamp.toLocal().minute.toString().padLeft(2, '0')}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: Colors.grey[600]),
-                              )
-                            : const Text('تاريخ غير متوفر'),
-                        onTap: () => _openSession(session),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('حذف الجلسة'),
-                                content: const Text(
-                                    'هل أنت متأكد من أنك تريد حذف هذه الجلسة وجميع رسائلها؟'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
-                                    child: const Text('إلغاء'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('حذف'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed == true) {
-                              await FirestoreService.deleteChatSession(session['id']);
-                              _fetchPreviousSessions();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('تم حذف الجلسة بنجاح'),
-                                      backgroundColor: Colors.green),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
+      body: body,
       floatingActionButton: FloatingActionButton(
-        onPressed: _startNewChatFlow,
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, size: 30),
-        heroTag: 'chat_tab_fab', // **تمت الإضافة: heroTag فريد**
+        heroTag: 'fab_chat',
+        onPressed: () {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (context) => const ChatScreen(),
+          ));
+        },
+        tooltip: 'دردشة جديدة',
+        child: const Icon(Icons.add),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

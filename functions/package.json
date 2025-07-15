@@ -1,0 +1,38 @@
+{
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint --ext .js,.ts .",
+    "build": "rimraf lib && tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "ren .env .env.local && npm run build && firebase deploy --only functions && ren .env.local .env",
+    "logs": "firebase functions:log"
+  },
+"engines": {
+"node": "20"
+},
+"main": "lib/index.js",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cohere-ai": "^7.17.1",
+    "cosine-similarity": "^1.0.0",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.0.1",
+    "lodash": "^4.17.21",
+    "openai": "^5.8.2"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.20",
+    "@typescript-eslint/eslint-plugin": "^5.12.0",
+    "@typescript-eslint/parser": "^5.12.0",
+    "eslint": "^8.9.0",
+    "eslint-config-google": "^0.14.0",
+    "eslint-plugin-import": "^2.25.4",
+    "firebase-functions-test": "^3.1.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  },
+  "private": true
+}

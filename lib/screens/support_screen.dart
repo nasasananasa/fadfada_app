@@ -1,3 +1,5 @@
+// lib/screens/support_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,7 +19,6 @@ class SupportScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // رسالة ترحيبية
             _buildWelcomeCard(context)
                 .animate()
                 .fadeIn(duration: const Duration(milliseconds: 600))
@@ -25,7 +26,6 @@ class SupportScreen extends StatelessWidget {
             
             const SizedBox(height: 24),
             
-            // أزمات نفسية طارئة
             _buildEmergencySection(context)
                 .animate(delay: const Duration(milliseconds: 200))
                 .fadeIn(duration: const Duration(milliseconds: 600))
@@ -33,7 +33,6 @@ class SupportScreen extends StatelessWidget {
             
             const SizedBox(height: 24),
             
-            // مصادر الدعم المهني
             _buildProfessionalSupportSection(context)
                 .animate(delay: const Duration(milliseconds: 400))
                 .fadeIn(duration: const Duration(milliseconds: 600))
@@ -41,7 +40,6 @@ class SupportScreen extends StatelessWidget {
             
             const SizedBox(height: 24),
             
-            // نصائح للعناية بالصحة النفسية
             _buildMentalHealthTipsSection(context)
                 .animate(delay: const Duration(milliseconds: 600))
                 .fadeIn(duration: const Duration(milliseconds: 600))
@@ -49,7 +47,6 @@ class SupportScreen extends StatelessWidget {
             
             const SizedBox(height: 24),
             
-            // التواصل معنا
             _buildContactSection(context)
                 .animate(delay: const Duration(milliseconds: 800))
                 .fadeIn(duration: const Duration(milliseconds: 600))
@@ -69,8 +66,8 @@ class SupportScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             colors: [
-              Theme.of(context).primaryColor.withOpacity(0.1),
-              Theme.of(context).primaryColor.withOpacity(0.05),
+              Theme.of(context).primaryColor.withAlpha((255 * 0.1).round()),
+              Theme.of(context).primaryColor.withAlpha((255 * 0.05).round()),
             ],
           ),
         ),
@@ -119,16 +116,13 @@ class SupportScreen extends StatelessWidget {
                     size: 28,
                   ),
                   const SizedBox(width: 12),
-                  Expanded( // تم إضافة Expanded هنا
+                  Expanded(
                     child: Text(
                       'حالات الطوارئ النفسية',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: Colors.red[700],
                           ),
-                      // يمكنك إضافة overflow هنا إذا كان النص ديناميكياً ويمكن أن يصبح طويلاً جداً
-                      // overflow: TextOverflow.ellipsis,
-                      // maxLines: 1,
                     ),
                   ),
                 ],
@@ -193,20 +187,22 @@ class SupportScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            // START: MODIFIED ACTION FOR PSYCHIATRIST
             _buildSupportOption(
               context,
               icon: Icons.person,
               title: 'طبيب نفسي',
               description: 'للتشخيص والعلاج الطبي',
-              onTap: () => _showPsychiatristInfo(context),
+              onTap: () => Navigator.of(context).pushNamed('/assessment-form'),
             ),
+            // END: MODIFIED ACTION
             const SizedBox(height: 12),
             _buildSupportOption(
               context,
               icon: Icons.chat,
               title: 'مختص نفسي',
               description: 'للعلاج النفسي والاستشارة',
-              onTap: () => _showPsychologistInfo(context),
+              onTap: () => Navigator.of(context).pushNamed('/assessment-form'),
             ),
             const SizedBox(height: 12),
             _buildSupportOption(
@@ -248,15 +244,18 @@ class SupportScreen extends StatelessWidget {
                   size: 28,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'نصائح للعناية بالصحة النفسية',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    'نصائح للعناية بالصحة النفسية',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
+                const SizedBox(height: 16),
             ...tips.map((tip) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
@@ -331,9 +330,9 @@ class SupportScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.withOpacity(0.3)),
+          color: Colors.white, 
+          borderRadius: BorderRadius.circular(12), 
+          border: Border.all(color: Colors.red.withAlpha((255 * 0.3).round())),
         ),
         child: Row(
           children: [
@@ -380,10 +379,10 @@ class SupportScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.05),
+          color: Theme.of(context).primaryColor.withAlpha((255 * 0.05).round()),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Theme.of(context).primaryColor.withOpacity(0.2),
+            color: Theme.of(context).primaryColor.withAlpha((255 * 0.2).round()),
           ),
         ),
         child: Row(
@@ -437,41 +436,7 @@ class SupportScreen extends StatelessWidget {
     }
   }
 
-  void _showPsychiatristInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('طبيب نفسي'),
-        content: const Text(
-          'الطبيب النفسي هو طبيب متخصص يمكنه تشخيص الاضطرابات النفسية ووصف الأدوية عند الحاجة. يُنصح بزيارته في الحالات التي تتطلب تقييماً طبياً شاملاً.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  void _showPsychologistInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('مختص نفسي'),
-        content: const Text(
-          'المختص النفسي متخصص في العلاج النفسي والاستشارة. يساعدك على فهم مشاعرك وتطوير مهارات التأقلم والتعامل مع التحديات النفسية.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showSupportGroupsInfo(BuildContext context) {
     showDialog(

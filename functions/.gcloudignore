@@ -1,0 +1,33 @@
+# Entries in this file are relative to the functions directory, not the
+# project root.
+
+# YARN
+yarn.lock
+# NPM
+package-lock.json
+# BOWER
+bower_components
+
+# DEPENDENCIES
+node_modules
+
+# LOGS
+*.log
+
+# SECRET FILES
+.env
+*.env
+*.env.*
+
+# BUILDS
+/lib/
+/dist/
+/out/
+
+# MACOS
+.DS_Store
+
+# MISC
+.firebase
+.firebaserc
+firebase.json

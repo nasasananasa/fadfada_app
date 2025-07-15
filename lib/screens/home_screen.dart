@@ -1,17 +1,15 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+// lib/screens/home_screen.dart
+
+import 'package:fadfada_app/screens/chat_screen.dart';
+import 'package:fadfada_app/screens/chat_tab.dart';
+import 'package:fadfada_app/screens/journal_screen.dart';
+import 'package:fadfada_app/screens/profile_screen.dart';
+import 'package:fadfada_app/screens/questionnaire_screen.dart';
+import 'package:fadfada_app/screens/settings_screen.dart';
+import 'package:fadfada_app/services/firestore_service.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../screens/chat_tab.dart';
-import '../screens/journal_screen.dart';
-import '../screens/support_screen.dart';
-import '../screens/settings_screen.dart';
-import '../services/auth_service.dart';
 import '../models/user_model.dart';
-import '../screens/mood_selector_screen.dart';
-import '../screens/chat_screen.dart';
+import '../services/ai_service.dart'; // ✅ Import AI Service
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,15 +20,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-
   UserModel? _currentUser;
-
-  final List<Widget> _screens = [
-    const DashboardTab(),
-    const ChatTab(),
-    const JournalScreen(),
-    const SupportScreen(),
-  ];
 
   @override
   void initState() {
@@ -39,32 +29,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final uid = AuthService.currentUid;
-    if (uid != null) {
-      final user = await AuthService.getUserData(uid);
-      if (mounted) {
-        setState(() {
-          _currentUser = user;
-        });
-      }
+    final user = await FirestoreService.getUserProfile();
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      DashboardTab(currentUser: _currentUser),
+      const ChatTab(),
+      const JournalScreen(),
+      const ProfileScreen(),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: screens,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Color.fromRGBO(0, 0, 0, 0.1),
               blurRadius: 10,
-              offset: const Offset(0, -2),
+              offset: Offset(0, -2),
             ),
           ],
         ),
@@ -104,9 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'يومياتي',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.support_agent_outlined),
-              activeIcon: Icon(Icons.support_agent),
-              label: 'دعم',
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'ملفي',
             ),
           ],
         ),
@@ -116,134 +110,39 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class DashboardTab extends StatefulWidget {
-  const DashboardTab({super.key});
+  final UserModel? currentUser;
+  const DashboardTab({super.key, this.currentUser});
 
   @override
   State<DashboardTab> createState() => _DashboardTabState();
 }
 
 class _DashboardTabState extends State<DashboardTab> {
-  UserModel? _currentUser;
-  late String _selectedGreetingLine;
   String _dailyTip = '...';
-
-  final List<String> _greetingLines = [
-    'كيف تشعر اليوم؟ أنا هنا للاستماع إليك.',
-    'مرحبًا، هل ترغب في التحدث؟',
-    'أنا هنا دائمًا إن احتجت لفضفضة.',
-    'لا تحمل كل شيء وحدك… دعني أستمع.',
-    'أخبرني بما في داخلك، أنا حاضر.',
-    'كل شيء يبدأ بكلمة… لنتحدث.',
-    'دعني أرافقك في هذه اللحظة.',
-    'اكتب لي، حتى لو لم تكن متأكدًا ممّا تشعر.',
-    'لنبدأ بنقطة صغيرة… أنا معك.',
-    'لا بأس إن لم تكن بخير… دعنا نبدأ.'
-  ];
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
-    _selectedGreetingLine = (_greetingLines.toList()..shuffle()).first;
     _loadDailyTip();
   }
 
-  Future<void> _loadUserData() async {
-    final uid = AuthService.currentUid;
-    if (uid != null) {
-      final user = await AuthService.getUserData(uid);
+  // هذه الدالة ستقوم الآن بجلب محتوى جديد في كل مرة يتم استدعاؤها
+  Future<void> _loadDailyTip() async {
+    // لا حاجة لوضع setState هنا في البداية لجعل التحديث أكثر سلاسة
+    try {
+      final tip = await AIService.generateDailyTip();
       if (mounted) {
         setState(() {
-          _currentUser = user;
+          _dailyTip = tip;
         });
       }
-    }
-  }
-
-  Future<void> _loadDailyTip() async {
-    final uid = AuthService.currentUid;
-    if (uid == null) return;
-
-    try {
-      final journalSnapshot = await FirebaseFirestore.instance
-          .collection('journal_entries')
-          .where('userId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .limit(1)
-          .get();
-
-      String latestChatContent = '';
-      final sessionSnapshot = await FirebaseFirestore.instance
-          .collection('chat_sessions')
-          .where('userId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .limit(1)
-          .get();
-
-      if (sessionSnapshot.docs.isNotEmpty) {
-        final latestSessionId = sessionSnapshot.docs.first.id;
-        final messagesSnapshot = await FirebaseFirestore.instance
-            .collection('chat_messages')
-            .where('sessionId', isEqualTo: latestSessionId)
-            .orderBy('timestamp', descending: true)
-            .limit(1)
-            .get();
-        if (messagesSnapshot.docs.isNotEmpty) {
-          latestChatContent = messagesSnapshot.docs.first.data()['content'] ?? '';
-        }
-      }
-
-      final latestJournal = journalSnapshot.docs.isNotEmpty
-          ? journalSnapshot.docs.first.data()['content'] ?? ''
-          : '';
-
-      final combinedText = '$latestJournal\n$latestChatContent'.trim();
-
-      if (combinedText.isEmpty) {
-        _dailyTip = _fallbackTip();
-      } else {
-        print('📢 النص الموحد المرسل إلى GPT:\n$combinedText');
-        final apiKey = dotenv.env['OPENAI_API_KEY'];
-        final uri = Uri.parse('https://api.openai.com/v1/chat/completions');
-        final response = await http.post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $apiKey',
-          },
-          body: jsonEncode({
-            'model': 'gpt-3.5-turbo',
-            'messages': [
-              {
-                'role': 'system',
-                'content': 'أنت مساعد نفسي محترف. استخرج نصيحة نفسية قصيرة ومفيدة من هذا النص، باللغة العربية، بطريقة ودية وداعمة.'
-              },
-              {
-                'role': 'user',
-                'content': combinedText,
-              }
-            ],
-            'temperature': 0.7,
-          }),
-        );
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          print('🔥 رد GPT الكامل:');
-          print(response.body);
-          print('✅ النصيحة المولدة من GPT: ${data['choices'][0]['message']['content']}');
-
-          _dailyTip = data['choices'][0]['message']['content'].toString().trim();
-        } else {
-          _dailyTip = _fallbackTip();
-        }
-      }
     } catch (e) {
-      print('❌ حدث خطأ أثناء الاتصال بـ GPT: $e');
-      _dailyTip = _fallbackTip();
-    }
-
-    if (mounted) {
-      setState(() {});
+      debugPrint("Failed to get AI daily tip, using fallback. Error: $e");
+      if (mounted) {
+        setState(() {
+          _dailyTip = _fallbackTip();
+        });
+      }
     }
   }
 
@@ -256,6 +155,18 @@ class _DashboardTabState extends State<DashboardTab> {
     ];
     final day = DateTime.now().day;
     return fallbackTips[day % fallbackTips.length];
+  }
+  
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    final name = widget.currentUser?.displayName ?? 'صديقي';
+    if (hour < 12) {
+      return 'صباح الخير يا $name، كيف تشعر اليوم؟';
+    } else if (hour < 18) {
+      return 'مساء الخير يا $name. ما الذي يدور في بالك؟';
+    } else {
+      return 'أهلاً بعودتك يا $name. أنا هنا لأستمع.';
+    }
   }
 
   @override
@@ -276,18 +187,71 @@ class _DashboardTabState extends State<DashboardTab> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      // ======================= بداية التعديل =======================
+      body: RefreshIndicator(
+        onRefresh: _loadDailyTip, // عند السحب، يتم استدعاء هذه الدالة
+        child: SingleChildScrollView(
+          // هذه الخاصية تضمن أن السحب يعمل حتى لو كان المحتوى لا يملأ الشاشة
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeCard(),
+              const SizedBox(height: 24),
+              _buildQuickActions(),
+              const SizedBox(height: 24),
+              _buildQuestionnaireCard(),
+              const SizedBox(height: 24),
+              _buildDailyTips(),
+            ],
+          ),
+        ),
+      ),
+      // ======================= نهاية التعديل =======================
+    );
+  }
+
+  Widget _buildQuestionnaireCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildWelcomeCard(),
-            const SizedBox(height: 24),
-            _buildQuickActions(),
-            const SizedBox(height: 24),
-            _buildDailyTips(),
-            const SizedBox(height: 24),
-            _buildStatistics(),
+            Row(
+              children: [
+                Icon(
+                  Icons.checklist_rtl_outlined,
+                  color: Theme.of(context).primaryColor,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'يا ترى فهمتك صح؟',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'لاحظت بعض الأمور، هل يمكننا مراجعتها معاً؟',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.5,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (context) => const QuestionnaireScreen()),
+                  );
+                },
+                child: const Text('لنراجع معاً'),
+              ),
+            ),
           ],
         ),
       ),
@@ -304,7 +268,7 @@ class _DashboardTabState extends State<DashboardTab> {
           gradient: LinearGradient(
             colors: [
               Theme.of(context).primaryColor,
-              Theme.of(context).primaryColor.withOpacity(0.8),
+              Theme.of(context).primaryColor.withAlpha(200),
             ],
           ),
         ),
@@ -315,24 +279,9 @@ class _DashboardTabState extends State<DashboardTab> {
               _getGreeting(),
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _currentUser?.displayName ?? 'صديقي العزيز',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _selectedGreetingLine,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 16,
+                height: 1.4,
               ),
             ),
           ],
@@ -355,25 +304,15 @@ class _DashboardTabState extends State<DashboardTab> {
             Expanded(
               child: _buildActionCard(
                 icon: Icons.psychology,
-                title: 'بدء محادثة',
-                subtitle: 'تحدث مع صديقك الافتراضي',
+                title: 'حابب تحكي؟',
+                subtitle: 'أنا هنا لأسمعك.',
                 color: Colors.blue,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => MoodSelectorScreen(
-                        onMoodSelected: (mood) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => ChatScreen(selectedMood: mood),
-                            ),
-                          );
-                        },
-                      ),
+                      builder: (context) => const ChatScreen(),
                     ),
-                  ).then((_) {
-                    _loadDailyTip();
-                  });
+                  );
                 },
               ),
             ),
@@ -381,17 +320,15 @@ class _DashboardTabState extends State<DashboardTab> {
             Expanded(
               child: _buildActionCard(
                 icon: Icons.edit,
-                title: 'كتابة خاطرة',
-                subtitle: 'سجل أفكارك ومشاعرك',
+                title: 'يومياتي',
+                subtitle: 'مساحتك الخاصة لترتيب أفكارك.',
                 color: Colors.green,
                 onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const JournalScreen(),
-                    ),
-                  ).then((_) {
-                    _loadDailyTip();
-                  });
+                   Navigator.of(context).push(
+                     MaterialPageRoute(
+                       builder: (context) => const JournalScreen(),
+                     ),
+                   );
                 },
               ),
             ),
@@ -420,7 +357,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -469,7 +406,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'نصيحة اليوم',
+                  'إلهام اليوم', // تم تغيير العنوان ليعكس المحتوى المتنوع
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ],
@@ -485,91 +422,5 @@ class _DashboardTabState extends State<DashboardTab> {
         ),
       ),
     );
-  }
-
-  Widget _buildStatistics() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'إحصائياتك',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatItem(
-                    icon: Icons.chat_bubble_outline,
-                    label: 'محادثات',
-                    value: '12',
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    icon: Icons.book_outlined,
-                    label: 'خواطر',
-                    value: '8',
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    icon: Icons.favorite_outline,
-                    label: 'أيام نشطة',
-                    value: '15',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Column(
-      children: [
-        Icon(
-          icon,
-          color: Theme.of(context).primaryColor,
-          size: 28,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) {
-      return 'صباح الخير';
-    } else if (hour < 18) {
-      return 'مساء الخير';
-    } else {
-      return 'مساء الخير';
-    }
   }
 }

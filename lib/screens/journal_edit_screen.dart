@@ -1,10 +1,13 @@
+// lib/screens/journal_edit_screen.dart
+
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart'; // تأكد من استيراد Uuid
+import 'package:uuid/uuid.dart';
 import '../models/journal_entry.dart';
-import '../models/mood.dart'; // تأكد من استيراد Mood
-import '../services/firestore_service.dart'; // تأكد من استيراد FirestoreService
-import '../services/auth_service.dart'; // تأكد من استيراد AuthService
-import '../widgets/custom_button.dart'; // تأكد من استيراد CustomButton
+import '../models/mood.dart';
+import '../services/firestore_service.dart';
+import '../services/auth_service.dart';
+import '../widgets/custom_button.dart';
+import '../services/ai_service.dart';
 
 class JournalEditScreen extends StatefulWidget {
   final JournalEntry? entry;
@@ -33,13 +36,25 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
     _setupChangeListeners();
   }
 
+  @override
+  void dispose() {
+    _titleController.removeListener(_onFieldChanged);
+    _contentController.removeListener(_onFieldChanged);
+    _tagController.removeListener(_onFieldChanged);
+    _titleController.dispose();
+    _contentController.dispose();
+    _tagController.dispose();
+    _contentFocusNode.dispose();
+    super.dispose();
+  }
+
   void _initializeFields() {
     if (widget.entry != null) {
       _titleController.text = widget.entry!.title;
       _contentController.text = widget.entry!.content;
-      _tags = List.from(widget.entry!.tags ?? []); // Added null-check for tags
+      _tags = List.from(widget.entry!.tags);
       _selectedMood = widget.entry!.moodId != null
-          ? Mood.getMoodById(widget.entry!.moodId!)
+          ? Mood.getById(widget.entry!.moodId!)
           : null;
     }
   }
@@ -47,19 +62,42 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   void _setupChangeListeners() {
     _titleController.addListener(_onFieldChanged);
     _contentController.addListener(_onFieldChanged);
-    _tagController.addListener(_onFieldChanged); // Listen to tag changes as well
-    // يمكنك إضافة Listener لتغيير المزاج أيضاً
-    // إذا كنت تستخدم DropdownButton أو أي عنصر اختيار مزاج آخر يغير الـ _selectedMood
-    // فعليك استدعاء _onFieldChanged عند حدوث هذا التغيير.
   }
 
   void _onFieldChanged() {
-    // هذا المنطق بسيط، يجعل _hasChanges صحيحاً بمجرد أي تغيير.
-    // للمراجعة الأكثر دقة: يمكنك مقارنة القيم الحالية بالقيم الأصلية لـ widget.entry
-    if (!_hasChanges) {
+    if (!_hasChanges && mounted) {
       setState(() {
         _hasChanges = true;
       });
+    }
+  }
+
+  Future<void> _handlePop() async {
+    if (!_hasChanges) {
+      if (mounted) Navigator.pop(context, false);
+      return;
+    }
+
+    final bool? shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تحذير'),
+        content: const Text('لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('البقاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('خروج'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldPop == true && mounted) {
+      Navigator.pop(context, false);
     }
   }
 
@@ -67,18 +105,12 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   Widget build(BuildContext context) {
     final isEditing = widget.entry != null;
 
-    return PopScope( // استخدام PopScope لأنه أحدث من WillPopScope
-      canPop: false, // نتحكم بالخروج يدوياً بناءً على _onWillPop
-      onPopInvoked: (bool didPop) async {
-        if (didPop) {
-          // إذا كان زر العودة الافتراضي قد قام بالعملية، فلا تفعل شيئاً.
-          // هذا يضمن أن _onWillPop هو الذي يتحكم في السلوك.
-          return;
-        }
-        final bool shouldPop = await _onWillPop();
-        if (shouldPop) {
-          if (mounted) Navigator.of(context).pop(true); // نعود للشاشة السابقة
-        }
+    return PopScope(
+      canPop: false,
+      // ✅ FIX: Used the newer onPopInvokedWithResult instead of the deprecated onPopInvoked
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) return;
+        await _handlePop();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -86,7 +118,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
           actions: [
             if (_hasChanges)
               TextButton(
-                onPressed: _saveEntry,
+                onPressed: _isLoading ? null : _saveEntry,
                 child: const Text('حفظ'),
               ),
           ],
@@ -150,12 +182,11 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // عند النقر على "إلغاء"، نعود للشاشة السابقة بدون حفظ
                   CustomButton(
-                    onPressed: _isLoading ? null : () => Navigator.pop(context, false), 
+                    onPressed: _isLoading ? null : () => _handlePop(),
                     text: 'إلغاء',
                     backgroundColor: Colors.grey[600],
-                    width: 100, // يمكن ضبط العرض حسب الحاجة
+                    width: 100,
                   ),
                 ],
               ),
@@ -181,12 +212,12 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
           final isSelected = _selectedMood?.id == mood.id;
 
           return Container(
-            margin: const EdgeInsets.only(right: 12),
+            margin: const EdgeInsets.only(left: 12),
             child: GestureDetector(
               onTap: () {
                 setState(() {
                   _selectedMood = isSelected ? null : mood;
-                  _hasChanges = true; // يتم تحديث الحالة عند تغيير المزاج
+                  _hasChanges = true;
                 });
               },
               child: Column(
@@ -197,7 +228,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? mood.color
-                          : mood.color.withOpacity(0.2),
+                          : mood.color.withAlpha((255 * 0.2).round()),
                       borderRadius: BorderRadius.circular(12),
                       border: isSelected
                           ? Border.all(color: mood.color, width: 2)
@@ -253,8 +284,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
                   (tag) => Chip(
                     label: Text('#$tag'),
                     onDeleted: () => _removeTag(tag),
-                    backgroundColor:
-                        Theme.of(context).primaryColor.withOpacity(0.1),
+                    backgroundColor: Theme.of(context).primaryColor.withAlpha((255 * 0.1).round()),
                     labelStyle: TextStyle(
                       color: Theme.of(context).primaryColor,
                     ),
@@ -268,7 +298,6 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
   }
 
   Widget _buildEntryInfo() {
-    // التأكد من أن widget.entry ليس null قبل الوصول إلى خصائصه
     if (widget.entry == null) return const SizedBox.shrink();
 
     return Container(
@@ -323,14 +352,19 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
 
   Future<void> _saveEntry() async {
     if (_contentController.text.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('يرجى كتابة محتوى الخاطرة'),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 1),
         ),
       );
       return;
     }
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     setState(() {
       _isLoading = true;
@@ -342,7 +376,7 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
         throw Exception('المستخدم غير مسجل الدخول');
       }
 
-      final entry = JournalEntry(
+      final JournalEntry entry = JournalEntry(
         id: widget.entry?.id ?? const Uuid().v4(),
         userId: userId,
         title: _titleController.text.trim(),
@@ -359,23 +393,45 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
         await FirestoreService.updateJournalEntry(entry);
       }
 
+      if (entry.title.isEmpty) {
+        final generatedTitle = await AIService.generateJournalTitleForJournalEntry(
+          journalEntryContent: entry.content,
+          journalEntryId: entry.id,
+        );
+
+        if (generatedTitle != null && generatedTitle.isNotEmpty) {
+          final updatedEntry = entry.copyWith(title: generatedTitle);
+          await FirestoreService.updateJournalEntry(updatedEntry);
+          if (mounted) {
+            setState(() {
+              _titleController.text = generatedTitle;
+            });
+          }
+          debugPrint('تم تحديث الخاطرة بالعنوان المُولد: $generatedTitle');
+        } else {
+          debugPrint('لم يتم توليد عنوان للخاطرة.');
+        }
+      }
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(widget.entry == null
                 ? 'تم حفظ الخاطرة بنجاح'
                 : 'تم تحديث الخاطرة بنجاح'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
           ),
         );
-        Navigator.pop(context, true); 
+        navigator.pop(true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('حدث خطأ في حفظ الخاطرة: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 1),
           ),
         );
       }
@@ -386,39 +442,5 @@ class _JournalEditScreenState extends State<JournalEditScreen> {
         });
       }
     }
-  }
-
-  Future<bool> _onWillPop() async {
-    if (!_hasChanges) return true; 
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تحذير'),
-        content:
-            const Text('لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false), 
-            child: const Text('البقاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true), 
-            child: const Text('خروج'),
-          ),
-        ],
-      ),
-    );
-
-    return result ?? false; 
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _contentController.dispose();
-    _tagController.dispose();
-    _contentFocusNode.dispose();
-    super.dispose();
   }
 }

@@ -17,7 +17,7 @@ class TypingIndicator extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              color: Theme.of(context).primaryColor.withAlpha((255 * 0.1).round()),
               borderRadius: BorderRadius.circular(18),
             ),
             child: Icon(
@@ -41,7 +41,7 @@ class TypingIndicator extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withAlpha((255 * 0.1).round()),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -50,11 +50,11 @@ class TypingIndicator extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _TypingDot(delay: 0),
+                const _TypingDot(delay: 0),
                 const SizedBox(width: 4),
-                _TypingDot(delay: 200),
+                const _TypingDot(delay: 200),
                 const SizedBox(width: 4),
-                _TypingDot(delay: 400),
+                const _TypingDot(delay: 400),
                 const SizedBox(width: 8),
                 Text(
                   'يكتب...',
@@ -84,7 +84,7 @@ class _TypingDot extends StatelessWidget {
       width: 8,
       height: 8,
       decoration: BoxDecoration(
-        color: Theme.of(context).primaryColor.withOpacity(0.6),
+        color: Theme.of(context).primaryColor.withAlpha((255 * 0.6).round()),
         shape: BoxShape.circle,
       ),
     )
